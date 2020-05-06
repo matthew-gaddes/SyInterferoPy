@@ -6,6 +6,7 @@ channels:
 dependencies:
   - python=3.7.1                            # general
   - matplotlib=3.0.1
+  - basemap                               # used to mask areas of water in DEMs
   - numpy
   - spyder                                # interactive plotting of ICASAR is designed to work with Spyder
   - scipy
