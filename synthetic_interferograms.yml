@@ -1,0 +1,14 @@
+name: synthetic_interferograms
+channels:
+  - defaults
+  - conda-forge
+
+dependencies:
+  - python=3.7.1                            # general
+  - matplotlib=3.0.1
+  - numpy
+  - spyder                                # interactive plotting of ICASAR is designed to work with Spyder
+  - ipdb
+  - pip
+  - pip:
+    - wget
