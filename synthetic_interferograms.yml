@@ -8,6 +8,7 @@ dependencies:
   - matplotlib=3.0.1
   - numpy
   - spyder                                # interactive plotting of ICASAR is designed to work with Spyder
+  - scipy
   - ipdb
   - pip
   - pip:

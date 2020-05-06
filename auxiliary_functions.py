@@ -39,34 +39,6 @@ def matrix_show(matrix, title='', ax = None, fig = None, db = False):
     if db:
         plt.pause(1)
 
-#%%
-        
-def open_MEG_dem(filename, scene_centre):
-    """ A fudge function to open a DEM and make it look
-    like it was created by the old function "dem_wrapper".  
-    
-    """
-    from auxiliary_functions import crop_matrix_with_ll
-    import pickle
-    import numpy as np
-    
-    pix_in_m = 92.6                                                                 # one pixel in the dem will be 92.6m long                                                                                   # pixels in m.  92.6m for a SRTM3 pixel on equator}         # where I keep SRTM tiles (the DEM)}
-    ll_extent = [13, 16, 39, 42]                                                    # start lon end lon start lat end lat of the DEM
-
-    with open(filename, 'rb') as f:                                        # open the dem I (MEG) made
-        dem = pickle.load(f)                                                # read the file, it's a masked array, hence _ma
-    
-    x_pixs = (ll_extent[1] - ll_extent[0])*1200                                                                             # coordinated of points in matrix form (ie 00 is top left)
-    y_pixs = (ll_extent[3] - ll_extent[2])*1200
-    X, Y = np.meshgrid(np.arange(0, x_pixs, 1), np.arange(0,y_pixs, 1))
-    ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                          # pairs of coordinates of everywhere we have data
-    ijk = np.vstack((ij, np.zeros((1,len(X)**2))))                                                                   #xy and 0 depth
-    ijk_m = pix_in_m  * ijk    
-          
-
-    dem_crop, _ = crop_matrix_with_ll(dem, (ll_extent[2], ll_extent[0]), 1200, scene_centre[0], scene_centre[1])
-
-    return dem, dem_crop, ijk_m, ll_extent
 
 #%%
         
@@ -120,77 +92,70 @@ def signal_atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, diff
 
 #%%
 
+def Mogi(m,xloc,nu,mu):
+    """
+    Computes displacements, strains and stresses from a point (Mogi) source. 
+    Inputs m and xloc can be matrices; for multiple models, the deformation fields from each are summed.
+
+    Inputs:
+        m = 4xn volume source geometry (length; length; length; length^3)
+            (x-coord, y-coord, depth(+), volume change)
+     xloc = 3xs matrix of observation coordinates (length)
+       nu = Poisson's ratio
+       mu = shear modulus (if omitted, default value is unity)
+    
+    Outputs:
+        U = 3xs matrix of displacements (length)
+            (Ux,Uy,Uz)
+        D = 9xn matrix of displacement derivatives
+            (Dxx,Dxy,Dxz,Dyx,Dyy,Dyz,Dzx,Dzy,Dzz)
+        S = 6xn matrix of stresses
+            (Sxx,Sxy,Sxz,Syy,Syz,Szz)
+    
+    History:
+        For information on the basis for this code see:
+        Okada, Y. Internal deformation due to shear and tensile faults in a half-space, Bull. Seismol. Soc. Am., 82, 1018-1049, 1992.
+        1998/06/17 | Peter Cervelli.
+        2000/11/03 | Peter Cervelli, Revised 
+        2001/08/21 | Kaj Johnson,  Fixed a bug ('*' multiplication should have been '.*'), , 2001. Kaj Johnson
+        2018/03/31 | Matthw Gaddes, converted to Python3  #, but only for U (displacements)
+    """
+    #import scipy.io
+    import numpy as np
+    
+    _, n_data = xloc.shape
+    _, models = m.shape
+    Lambda=2*mu*nu/(1-2*nu)
+    U=np.zeros((3,n_data))                        # set up the array to store displacements
+                  
+    for i in range(models):                         # loop through each of the defo sources
+        C=m[3]/(4*np.pi)
+        x=xloc[0,:]-float(m[0,i])                          # difference in distance from centre of source (x)
+        y=xloc[1,:]-float(m[1,i])                         # difference in distance from centre of source (y)
+        z=xloc[2,:]
+        d1=m[2,i]-z
+        d2=m[2,i]+z
+        R12=x**2+y**2+d1**2
+        R22=x**2+y**2+d2**2
+        R13=R12**1.5
+        R23=R22**1.5
+        R15=R12**2.5
+        R25=R22**2.5
+        R17=R12**3.5
+        R27=R12**3.5
+            
+        #Calculate displacements
+        U[0,:] = U[0,:] + C*( (3 - 4*nu)*x/R13 + x/R23 + 6*d1*x*z/R15 )
+        U[1,:] = U[1,:] + C*( (3 - 4*nu)*y/R13 + y/R23 + 6*d1*y*z/R15 )
+        U[2,:] = U[2,:] + C*( (3 - 4*nu)*d1/R13 + d2/R23 - 2*(3*d1**2 - R12)*z/R15)
+    return U
+
+
 def signal_deformation(dem, water_mask, mogi_cent, source_cent, ijk_m, ll_extent, pix_in_m=92.6, heading=192, incidence=32):
     """ A function to make deformation from a mogi source and crop to size
     """
     import numpy as np    
     import numpy.ma as ma
-    
-    def Mogi(m,xloc,nu,mu):
-        """
-        %
-        %Computes displacements, strains and stresses from a point (Mogi) source.
-        %Inputs m and xloc can be matrices; for multiple models, the deformation
-        %fields from each are summed.
-        %
-        %Inputs:
-        %    m = 4xn volume source geometry (length; length; length; length^3)
-        %        (x-coord, y-coord, depth(+), volume change)
-        % xloc = 3xs matrix of observation coordinates (length)
-        %   nu = Poisson's ratio
-        %   mu = shear modulus (if omitted, default value is unity)
-        %
-        %Outputs:
-        %    U = 3xs matrix of displacements (length)
-        %        (Ux,Uy,Uz)
-        %    D = 9xn matrix of displacement derivatives
-        %        (Dxx,Dxy,Dxz,Dyx,Dyy,Dyz,Dzx,Dzy,Dzz)
-        %    S = 6xn matrix of stresses
-        %        (Sxx,Sxy,Sxz,Syy,Syz,Szz)
-        %
-        %June 17, 1998. Peter Cervelli.
-        %Revised November 3, 2000.
-        %Fixed a bug ('*' multiplication should have been '.*'), August 22, 2001. Kaj Johnson
-        %
-        %For information on the basis for this code see:
-        %
-        %Okada, Y. Internal deformation due to shear and tensile faults in a half-space,
-        %    Bull. Seismol. Soc. Am., 82, 1018-1049, 1992.
-        
-        2017/??/?? | Converted from Matlab to Python - derivates and stresses not converted.  
-        
-        """
-        
-        import scipy.io
-        import numpy as np
-        
-        _, n_data = xloc.shape
-        _, models = m.shape
-        Lambda=2*mu*nu/(1-2*nu)
-        U=np.zeros((3,n_data))                        # set up the array to store displacements
-                      
-        for i in range(models):                         # loop through each of the defo sources, I think?
-            C=m[3]/(4*np.pi)
-            x=xloc[0,:]-float(m[0,i])                          # difference in distance from centre of source (x)
-            y=xloc[1,:]-float(m[1,i])                         # difference in distance from centre of source (y)
-            z=xloc[2,:]
-            d1=m[2,i]-z
-            d2=m[2,i]+z
-            R12=x**2+y**2+d1**2
-            R22=x**2+y**2+d2**2
-            R13=R12**1.5
-            R23=R22**1.5
-            R15=R12**2.5
-            R25=R22**2.5
-            R17=R12**3.5
-            R27=R12**3.5
-                
-            #Calculate displacements
-            U[0,:] = U[0,:] + C*( (3 - 4*nu)*x/R13 + x/R23 + 6*d1*x*z/R15 )
-            U[1,:] = U[1,:] + C*( (3 - 4*nu)*y/R13 + y/R23 + 6*d1*y*z/R15 )
-            U[2,:] = U[2,:] + C*( (3 - 4*nu)*d1/R13 + d2/R23 - 2*(3*d1**2 - R12)*z/R15)
-        return U
-    
     
     mogi_loc_pix = ll2xy((ll_extent[2], ll_extent[0]), 1200, np.array([[mogi_cent[0][0], mogi_cent[0][1]]]))            #centre  
     mogi_loc_pix[0,1] = np.size(dem, axis=0) - mogi_loc_pix[0,1]                                                                # convert xy in matrix stlye  (ie from the top left, and not bottom left)
@@ -215,6 +180,171 @@ def signal_deformation(dem, water_mask, mogi_cent, source_cent, ijk_m, ll_extent
     defo_signal_crop = ma.array(defo_signal_crop, mask = water_mask)
     
     return defo_signal, defo_signal_crop
+
+
+#%%
+
+
+def dem_make(west, east, south, north, path_tiles, download, void_fill = False):
+    """ Make a dem for a region using SRTM3 tiles.  Option to void fill these, and can create a folder 
+    to keep tiles in so that they don't need to be redownloaded.  '
+
+    Input:
+        west | -179 -> 180 | west of GMT is negative
+        east | -179 -> 180 | west of GMT is negative
+        south | -90 -> 90  | northern hemishpere is positive
+        north | -90 -> 90  | northern hemishpere is positive
+        path | string | location of previously downloaded SRTM1 tiles
+        download | 1 or 0 | 1 is allowed to download tiles, 0 is not allowed to (checking for files that can't be downloaded is slow)
+        void_fill | boolean |
+    Output:
+        dem | rank 2 array | the dem
+        lons | rank 1 array | longitude of bottom left of each 1' x1' grid cell
+        lats | rank 1 array | latitude of bottom left of each 1' x1' grid cell
+    History:
+        2017/01/?? | written?
+        2017/02/27 | saved before void filling verion
+    
+    """
+    import numpy as np
+    import wget                                                                # for downloading tiles
+    import zipfile                                                             # tiles are supplied zipped
+    import os
+    from scipy.interpolate import griddata                                     # for interpolating over any voids
+
+    def read_hgt_file(file, samples):
+        """
+        function to open SRTM .hgt files
+        taken from: https://librenepal.com/article/reading-srtm-data-with-python/
+        """
+        with open(file) as hgt_data:
+            # Each data is 16bit signed integer(i2) - big endian(>)
+            elevations = np.fromfile(hgt_data, np.dtype('>i2'), samples*samples).reshape((samples, samples))
+        return elevations
+
+    def tile_downloader(region, tile):
+        """
+        download SRTM 3 tiles, given the region it's in (e.g. Eurasia, and the lat lon that describes it). 
+        Inputs:
+            region
+            tile
+        returns:
+            .hgt file
+        """
+        path_download = 'https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/'            # other locations, but easiest to http from
+        filename = wget.download(path_download + region + '/' + tile  + '.hgt.zip')
+
+
+    samples = 1200                                                          # pixels in 1' of latitude/longitude. 1200 for SRTM3
+    null = -32768                                                           # from SRTM documentation
+    regions = ['Africa', 'Australia', 'Eurasia', 'Islands', 'North_America', 'South_America']
+
+    lats = np.arange(south, north, 1)
+    lons = np.arange(west, east, 1)
+    num_x_pixs = lons.size * samples
+    num_y_pixs = lats.size * samples
+    dem = null * np.ones((num_y_pixs, num_x_pixs))                             # make the blank array of null values
+
+    for j in lons:                                                                                  # one column first, make the name for the tile to try and download
+        for k in lats:                                                                              # and then rows for that column
+            void_fill_skip = False                                                                  # reset for each tile
+            download_success = False                                                                # reset to haven't been able to download        
+            # 0: get the name of the tile
+            if k >= 0 and j >= 0:                       # north east quadrant
+                tile = 'N' + str(k).zfill(2) + 'E' + str(j).zfill(3)                                    # zfill pads to the left with zeros so always 2 or 3 digits long.
+            if k >= 0 and j < 0:                        # north west quadant
+                tile = 'N' + str(k).zfill(2) + 'W' + str(-j).zfill(3)
+            if k < 0 and j >= 0:                        # south east quadrant
+                tile = 'S' + str(-k).zfill(2) + 'E' + str(j).zfill(3)
+            if k < 0 and j < 0:                         # south east quadrant
+                tile = 'S' + str(-k).zfill(2) + 'W' + str(-j).zfill(3)
+
+
+           # 1: Try to a) open it if already downloaded b) download it c) make a blank tile of null values
+            try:
+                print(f"{tile} : Trying to open locally...", end = "")
+                tile_elev = read_hgt_file(path_tiles + '/' + tile + '.hgt', samples+1)                                 # look for tile in tile folder
+                print(" Done!")
+            except:                                                                                                    # if we can't find it, try and download it, or fill with 0s
+                print(" Failed.")
+                if download == 1:
+                    print(f"{tile} : Trying to download it...  ", end = "" )
+                    for region in regions:                                                                             # Loop through all the SRTM regions (as from a lat and lon it's hard to know which folder they're in)
+                        if download_success is False:
+                            try:
+                                tile_downloader(region , tile)                                                    # srtm data is in different folders for each region.  Try all alphabetically until find the ones it's in
+                                download_success = True
+                                print(" Done! ")
+                            except:
+                                download_success = False
+                                        
+                    if download_success:
+                        with zipfile.ZipFile(tile + '.hgt.zip' ,"r") as zip_ref:                                # if we downloaded a file, need to now delete it
+                            zip_ref.extractall(path_tiles)
+                        os.remove(tile + '.hgt.zip')                                                                # delete the downloaded zip file
+                        tile_elev = read_hgt_file(path_tiles + '/' + tile + '.hgt', samples+1)                  # look for tile in tile folder
+                        void_fill_skip = False
+                    else:
+                        print(" Failed. ")
+                else:
+                    pass
+                if (download == 0) or (download_success == False):
+                    print(f"{tile} : Replacing with null values (the tile probably doesn't exist and covers only water)...  " , end = "")
+                    tile_elev = null * np.ones((samples,samples))
+                    void_fill_skip = True                                                                  # it's all a void, so don't try and fill it
+                    print(" Done! ")
+#                    import ipdb; ipdb.set_trace()
+                else:
+                    pass
+
+
+            #2: if required, fill voids in the tile
+            if void_fill is True and np.min(tile_elev) == (-32768) and void_fill_skip is False:                             # if there is a void in the tile, and we've said that we want to fill voids.  
+                print(f"{tile} : Filling voids in the tile... ", end = "")
+                grid_x, grid_y = np.mgrid[0:1200:1  ,0:1200:1 ]
+                valid_points = np.argwhere(tile_elev > (-32768))                                               # void are filled with -32768 perhaps?  less than -1000 should catch these
+                tile_elev_at_valid_points = tile_elev[valid_points[:,0], valid_points[:,1]]
+                tile_elev = griddata(valid_points, tile_elev_at_valid_points, (grid_x, grid_y), method='linear')
+                print(' Done!')
+
+            #3: Stitch the current tile into the full dem
+            dem[num_y_pixs-((k+1-lats[0])*samples) :num_y_pixs-((k-lats[0])*samples), (j-lons[0])*samples:(j+1-lons[0])*samples] = tile_elev[0:1200,0:1200]
+    return dem, lons, lats
+
+
+
+
+def dem_wrapper(crop, path_tiles, download_dems, void_fill, pix_in_m):
+    """
+    Inputs:
+        crop | list | e.g [(40.84, 14.14), 20]                     # lat lon scene width(km)
+        path_tils | string | absolute path to location of dem info.
+        download_dems | boolean | if true, function will try to download.  If all tiles have already been downloaded, faster if set to False
+        void_fill | boolean | if true, will fill voids in dem data
+
+    """
+    import numpy as np
+
+    # 0: from centre of scene, work out how big the dem needs to be, and make it
+    ll_extent = [np.floor(crop[0][1]-1), np.ceil(crop[0][1]+1), np.floor(crop[0][0]-1) , np.ceil(crop[0][0]+1)]             # west east south north - needs to be square!
+    ll_extent = [int(i) for i in ll_extent]                                                                                 # convert to intergers
+    
+    # 1: Make the DEM
+    dem, lons, lats = dem_make(ll_extent[0], ll_extent[1], ll_extent[2], ll_extent[3], path_tiles, download_dems, void_fill)                       # make the dem
+
+    # 2: Crop the DEM to the required size
+    dem_crop, _ = crop_matrix_with_ll(dem, (ll_extent[2], ll_extent[0]), 1200, crop[0], crop[1])
+
+    # 3: make a matrix of the x and y positions of each pixel of the cropped DEM.    
+    x_pixs = (ll_extent[1] - ll_extent[0])*1200                                                               # coordinated of points in matrix form (ie 00 is top left)
+    y_pixs = (ll_extent[3] - ll_extent[2])*1200
+    X, Y = np.meshgrid(np.arange(0, x_pixs, 1), np.arange(0,y_pixs, 1))
+    ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                          # pairs of coordinates of everywhere we have data
+    ijk = np.vstack((ij, np.zeros((1,len(X)**2))))                                                                   #xy and 0 depth
+    ijk_m = pix_in_m  * ijk                                                                                          # convert from pixels to metres
+
+    return dem, dem_crop, ijk_m, ll_extent
+
 
 
 #%%
@@ -343,6 +473,19 @@ def signal_atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = F
 
 
 #%% other less exciting functions 
+
+
+def quick_dem_plot(dem, title):
+    """ Plot dems quickly
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    fig1, ax = plt.subplots()                                                       # make a figure to show it
+    fig1.canvas.set_window_title(title)
+    fig1.suptitle(title)
+    matrixPlt = ax.imshow(dem, vmin = 0, vmax = np.max(dem))                                              # best to set lower limit to 0 as voids are filled with -32768 so mess the colours up
+    fig1.colorbar(matrixPlt,ax=ax)
     
 def crop_matrix_with_ll(im, im_ll, pixs2deg, centre, square):
     """
@@ -424,6 +567,8 @@ def ll2xy(bottom_left, pix2deg, points):
     points_xy = points_xy.astype(int)                   # pixels must be integers 
     return points_xy                      
  
+    
+ 
 def col_to_ma(col, pixel_mask):
     """ A function to take a column vector and a 2d pixel mask and reshape the column into a masked array.  
     Useful when converting between vectors used by BSS methods results that are to be plotted
@@ -446,4 +591,5 @@ def col_to_ma(col, pixel_mask):
     source[~source.mask] = col.ravel()   
     return source
 
-              
+#%%
+
