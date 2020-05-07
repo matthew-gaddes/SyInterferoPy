@@ -16,19 +16,19 @@ conda env create --file synthetic_interferogams.yml
 <h5>Examples:</h5>
 
 We can set a scene of 20km side length centered on Campi Flegrei using just its latitude and longitude:\
-scene_centre = [(40.84, 14.14), 20]                                                
+<code>scene_centre = [(40.84, 14.14), 20]                                                </code>
 
 ![02_DEM_Cropped_to_area_of_interest](https://user-images.githubusercontent.com/10498635/81289416-4f4d1a00-905e-11ea-8ea0-79bdd7ebe365.png)
 
 Or just as easily switch to a different volcano, such as Vesuvius:\
-scene_centre = [(40.82, 14.43), 20]
+<code>scene_centre = [(40.82, 14.43), 20]</code>
 ![03_DEM_cropped_to_area_of_interest_for_new_location_(Vesuvius](https://user-images.githubusercontent.com/10498635/81289455-5c6a0900-905e-11ea-904d-dff238823018.png)
 
 And convert the DEM into a topographically correlated APS:
 ![08_Topographically_correlated_APS](https://user-images.githubusercontent.com/10498635/81289548-84596c80-905e-11ea-8100-27d6e9c21c01.png)
 
 We can add deformation from a pont (Mogi) source at a latitude and longitude of our choice, and set its depth and volume change (in m):\
-deformation_centre = [(40.84, 14.14), 2000 , 1e6]            
+<code>deformation_centre = [(40.84, 14.14), 2000 , 1e6]            </code>
 ![06_Deformaiton_signal](https://user-images.githubusercontent.com/10498635/81289526-7ad00480-905e-11ea-87c2-59ef66eec217.png)
 
 And also generate a turbulent APS:
