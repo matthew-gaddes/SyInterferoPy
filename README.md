@@ -9,7 +9,7 @@ If you use this software in your research, please cite the [2019 JGR:SE paper](h
 
 <h5>Installation:</h5>
 A suitable python environment can be created using the conda command:<br>
-<code>conda env create --file synthetic_interferogams.yml</code>
+<code>conda env create --file synthetic_interferograms.yml</code>
 
 <br>
 
