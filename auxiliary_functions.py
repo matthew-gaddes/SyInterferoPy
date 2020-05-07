@@ -7,39 +7,6 @@ Created on Thu Feb 13 18:14:05 2020
 """
 
 
-
-#%%
-
-def matrix_show(matrix, title='', ax = None, fig = None, db = False):
-    """Visualise a matrix 
-    Inputs:
-        matrix | r2 array or masked array
-        title | string
-        ax | matplotlib axes
-        db | boolean | bug fix for Spyder debugging.  If True, will allow figure to show when 
-                        debugging
-    
-    2017/10/18 | update so can be passed an axes and plotted in an existing figure
-    2017/11/13 | fix bug in how colorbars are plotted.  
-    2017/12/01 | fix bug if fig is not None
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    
-    if ax is None:
-        fig, ax = plt.subplots()
-    matrix = np.atleast_2d(matrix)                   # make at least 2d so can plot column/row vectors
-    
-    if isinstance(matrix[0,0], np.bool_):           # boolean arrays will plot, but mess up the colourbar
-        matrix = matrix.astype(int)                 # so convert
-    
-    matrixPlt = ax.imshow(matrix,interpolation='none', aspect='auto')
-    fig.colorbar(matrixPlt,ax=ax)
-    ax.set_title(title)
-    if db:
-        plt.pause(1)
-
-
 #%%
         
 def signal_atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, difference = False):
@@ -85,6 +52,7 @@ def signal_atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, diff
         ph_topo_m -= np.min(ph_topo_m)
 
     ph_topo_m = ma.array(ph_topo_m, mask = ma.getmask(dem_m))
+    ph_topo_m -= ma.mean(ph_topo_m)                                                 # mean centre the signal
 
     return ph_topo_m
 
@@ -152,7 +120,18 @@ def Mogi(m,xloc,nu,mu):
 
 
 def signal_deformation(dem, water_mask, mogi_cent, source_cent, ijk_m, ll_extent, pix_in_m=92.6, heading=192, incidence=32):
-    """ A function to make deformation from a mogi source and crop to size
+    """ A function to make deformation from a mogi source and crop to size.  
+    Inputs:
+        dem | r2 array | dem for the region of interest.  Used to set size of deforamtion signal array
+        water_mask | r2 array  | used to mask the deformation signal
+        mogi_cent | list | (lat, lon), depth (m), volume change (m)
+        source_cent | list | (lat, lon), scene size (m)
+        ijk_m   | r2 array |x locations of pixels in m
+        ll_extent | 
+        pix_in_m
+        headins
+        incidence
+        
     """
     import numpy as np    
     import numpy.ma as ma
@@ -170,7 +149,9 @@ def signal_deformation(dem, water_mask, mogi_cent, source_cent, ijk_m, ll_extent
     x_pixs = (ll_extent[1] - ll_extent[0])*1200                     # coordinated of points in matrix form (ie 00 is top left)
     y_pixs = (ll_extent[3] - ll_extent[2])*1200
     
-    defo_signal = np.reshape(U_mogi_los, (x_pixs, y_pixs))                                                        # column vector to rank 2 array
+    #import ipdb; ipdb.set_trace()
+    
+    defo_signal = np.reshape(U_mogi_los, (y_pixs, x_pixs))                                                        # column vector to rank 2 array
 
 
     
@@ -180,170 +161,6 @@ def signal_deformation(dem, water_mask, mogi_cent, source_cent, ijk_m, ll_extent
     defo_signal_crop = ma.array(defo_signal_crop, mask = water_mask)
     
     return defo_signal, defo_signal_crop
-
-
-#%%
-
-
-def dem_make(west, east, south, north, path_tiles, download, void_fill = False):
-    """ Make a dem for a region using SRTM3 tiles.  Option to void fill these, and can create a folder 
-    to keep tiles in so that they don't need to be redownloaded.  '
-
-    Input:
-        west | -179 -> 180 | west of GMT is negative
-        east | -179 -> 180 | west of GMT is negative
-        south | -90 -> 90  | northern hemishpere is positive
-        north | -90 -> 90  | northern hemishpere is positive
-        path | string | location of previously downloaded SRTM1 tiles
-        download | 1 or 0 | 1 is allowed to download tiles, 0 is not allowed to (checking for files that can't be downloaded is slow)
-        void_fill | boolean |
-    Output:
-        dem | rank 2 array | the dem
-        lons | rank 1 array | longitude of bottom left of each 1' x1' grid cell
-        lats | rank 1 array | latitude of bottom left of each 1' x1' grid cell
-    History:
-        2017/01/?? | written?
-        2017/02/27 | saved before void filling verion
-    
-    """
-    import numpy as np
-    import wget                                                                # for downloading tiles
-    import zipfile                                                             # tiles are supplied zipped
-    import os
-    from scipy.interpolate import griddata                                     # for interpolating over any voids
-
-    def read_hgt_file(file, samples):
-        """
-        function to open SRTM .hgt files
-        taken from: https://librenepal.com/article/reading-srtm-data-with-python/
-        """
-        with open(file) as hgt_data:
-            # Each data is 16bit signed integer(i2) - big endian(>)
-            elevations = np.fromfile(hgt_data, np.dtype('>i2'), samples*samples).reshape((samples, samples))
-        return elevations
-
-    def tile_downloader(region, tile):
-        """
-        download SRTM 3 tiles, given the region it's in (e.g. Eurasia, and the lat lon that describes it). 
-        Inputs:
-            region
-            tile
-        returns:
-            .hgt file
-        """
-        path_download = 'https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/'            # other locations, but easiest to http from
-        filename = wget.download(path_download + region + '/' + tile  + '.hgt.zip')
-
-
-    samples = 1200                                                          # pixels in 1' of latitude/longitude. 1200 for SRTM3
-    null = -32768                                                           # from SRTM documentation
-    regions = ['Africa', 'Australia', 'Eurasia', 'Islands', 'North_America', 'South_America']
-
-    lats = np.arange(south, north, 1)
-    lons = np.arange(west, east, 1)
-    num_x_pixs = lons.size * samples
-    num_y_pixs = lats.size * samples
-    dem = null * np.ones((num_y_pixs, num_x_pixs))                             # make the blank array of null values
-
-    for j in lons:                                                                                  # one column first, make the name for the tile to try and download
-        for k in lats:                                                                              # and then rows for that column
-            void_fill_skip = False                                                                  # reset for each tile
-            download_success = False                                                                # reset to haven't been able to download        
-            # 0: get the name of the tile
-            if k >= 0 and j >= 0:                       # north east quadrant
-                tile = 'N' + str(k).zfill(2) + 'E' + str(j).zfill(3)                                    # zfill pads to the left with zeros so always 2 or 3 digits long.
-            if k >= 0 and j < 0:                        # north west quadant
-                tile = 'N' + str(k).zfill(2) + 'W' + str(-j).zfill(3)
-            if k < 0 and j >= 0:                        # south east quadrant
-                tile = 'S' + str(-k).zfill(2) + 'E' + str(j).zfill(3)
-            if k < 0 and j < 0:                         # south east quadrant
-                tile = 'S' + str(-k).zfill(2) + 'W' + str(-j).zfill(3)
-
-
-           # 1: Try to a) open it if already downloaded b) download it c) make a blank tile of null values
-            try:
-                print(f"{tile} : Trying to open locally...", end = "")
-                tile_elev = read_hgt_file(path_tiles + '/' + tile + '.hgt', samples+1)                                 # look for tile in tile folder
-                print(" Done!")
-            except:                                                                                                    # if we can't find it, try and download it, or fill with 0s
-                print(" Failed.")
-                if download == 1:
-                    print(f"{tile} : Trying to download it...  ", end = "" )
-                    for region in regions:                                                                             # Loop through all the SRTM regions (as from a lat and lon it's hard to know which folder they're in)
-                        if download_success is False:
-                            try:
-                                tile_downloader(region , tile)                                                    # srtm data is in different folders for each region.  Try all alphabetically until find the ones it's in
-                                download_success = True
-                                print(" Done! ")
-                            except:
-                                download_success = False
-                                        
-                    if download_success:
-                        with zipfile.ZipFile(tile + '.hgt.zip' ,"r") as zip_ref:                                # if we downloaded a file, need to now delete it
-                            zip_ref.extractall(path_tiles)
-                        os.remove(tile + '.hgt.zip')                                                                # delete the downloaded zip file
-                        tile_elev = read_hgt_file(path_tiles + '/' + tile + '.hgt', samples+1)                  # look for tile in tile folder
-                        void_fill_skip = False
-                    else:
-                        print(" Failed. ")
-                else:
-                    pass
-                if (download == 0) or (download_success == False):
-                    print(f"{tile} : Replacing with null values (the tile probably doesn't exist and covers only water)...  " , end = "")
-                    tile_elev = null * np.ones((samples,samples))
-                    void_fill_skip = True                                                                  # it's all a void, so don't try and fill it
-                    print(" Done! ")
-#                    import ipdb; ipdb.set_trace()
-                else:
-                    pass
-
-
-            #2: if required, fill voids in the tile
-            if void_fill is True and np.min(tile_elev) == (-32768) and void_fill_skip is False:                             # if there is a void in the tile, and we've said that we want to fill voids.  
-                print(f"{tile} : Filling voids in the tile... ", end = "")
-                grid_x, grid_y = np.mgrid[0:1200:1  ,0:1200:1 ]
-                valid_points = np.argwhere(tile_elev > (-32768))                                               # void are filled with -32768 perhaps?  less than -1000 should catch these
-                tile_elev_at_valid_points = tile_elev[valid_points[:,0], valid_points[:,1]]
-                tile_elev = griddata(valid_points, tile_elev_at_valid_points, (grid_x, grid_y), method='linear')
-                print(' Done!')
-
-            #3: Stitch the current tile into the full dem
-            dem[num_y_pixs-((k+1-lats[0])*samples) :num_y_pixs-((k-lats[0])*samples), (j-lons[0])*samples:(j+1-lons[0])*samples] = tile_elev[0:1200,0:1200]
-    return dem, lons, lats
-
-
-
-
-def dem_wrapper(crop, path_tiles, download_dems, void_fill, pix_in_m):
-    """
-    Inputs:
-        crop | list | e.g [(40.84, 14.14), 20]                     # lat lon scene width(km)
-        path_tils | string | absolute path to location of dem info.
-        download_dems | boolean | if true, function will try to download.  If all tiles have already been downloaded, faster if set to False
-        void_fill | boolean | if true, will fill voids in dem data
-
-    """
-    import numpy as np
-
-    # 0: from centre of scene, work out how big the dem needs to be, and make it
-    ll_extent = [np.floor(crop[0][1]-1), np.ceil(crop[0][1]+1), np.floor(crop[0][0]-1) , np.ceil(crop[0][0]+1)]             # west east south north - needs to be square!
-    ll_extent = [int(i) for i in ll_extent]                                                                                 # convert to intergers
-    
-    # 1: Make the DEM
-    dem, lons, lats = dem_make(ll_extent[0], ll_extent[1], ll_extent[2], ll_extent[3], path_tiles, download_dems, void_fill)                       # make the dem
-
-    # 2: Crop the DEM to the required size
-    dem_crop, _ = crop_matrix_with_ll(dem, (ll_extent[2], ll_extent[0]), 1200, crop[0], crop[1])
-
-    # 3: make a matrix of the x and y positions of each pixel of the cropped DEM.    
-    x_pixs = (ll_extent[1] - ll_extent[0])*1200                                                               # coordinated of points in matrix form (ie 00 is top left)
-    y_pixs = (ll_extent[3] - ll_extent[2])*1200
-    X, Y = np.meshgrid(np.arange(0, x_pixs, 1), np.arange(0,y_pixs, 1))
-    ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                          # pairs of coordinates of everywhere we have data
-    ijk = np.vstack((ij, np.zeros((1,len(X)**2))))                                                                   #xy and 0 depth
-    ijk_m = pix_in_m  * ijk                                                                                          # convert from pixels to metres
-
-    return dem, dem_crop, ijk_m, ll_extent
 
 
 
@@ -474,6 +291,38 @@ def signal_atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = F
 
 #%% other less exciting functions 
 
+def matrix_show(matrix, title='', ax = None, fig = None, db = False):
+    """Visualise a matrix 
+    Inputs:
+        matrix | r2 array or masked array
+        title | string
+        ax | matplotlib axes
+        db | boolean | bug fix for Spyder debugging.  If True, will allow figure to show when 
+                        debugging
+    
+    2017/10/18 | update so can be passed an axes and plotted in an existing figure
+    2017/11/13 | fix bug in how colorbars are plotted.  
+    2017/12/01 | fix bug if fig is not None
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    if ax is None:
+        fig, ax = plt.subplots()
+    matrix = np.atleast_2d(matrix)                   # make at least 2d so can plot column/row vectors
+    
+    if isinstance(matrix[0,0], np.bool_):           # boolean arrays will plot, but mess up the colourbar
+        matrix = matrix.astype(int)                 # so convert
+    
+    matrixPlt = ax.imshow(matrix,interpolation='none', aspect='auto')
+    fig.colorbar(matrixPlt,ax=ax)
+    ax.set_title(title)
+    fig.canvas.set_window_title(title)
+    if db:
+        plt.pause(1)
+
+
+
 
 def quick_dem_plot(dem, title):
     """ Plot dems quickly
@@ -486,6 +335,9 @@ def quick_dem_plot(dem, title):
     fig1.suptitle(title)
     matrixPlt = ax.imshow(dem, vmin = 0, vmax = np.max(dem))                                              # best to set lower limit to 0 as voids are filled with -32768 so mess the colours up
     fig1.colorbar(matrixPlt,ax=ax)
+    
+    
+    
     
 def crop_matrix_with_ll(im, im_ll, pixs2deg, centre, square):
     """
@@ -590,6 +442,133 @@ def col_to_ma(col, pixel_mask):
     source.unshare_mask()
     source[~source.mask] = col.ravel()   
     return source
+
+
+
+def remappedColorMap(cmap, start=0, midpoint=0.5, stop=1.0, name='shiftedcmap'):
+    '''
+    Function to offset the median value of a colormap, and scale the
+    remaining color range (i.e. truncate the colormap so that it isn't
+    compressed on the shorter side) . Useful for data with a negative minimum and
+    positive maximum where you want the middle of the colormap's dynamic
+    range to be at zero.
+    Input
+    -----
+      cmap : The matplotlib colormap to be altered
+      start : Offset from lowest point in the colormap's range.
+          Defaults to 0.0 (no lower ofset). Should be between
+          0.0 and 0.5; if your dataset mean is negative you should leave
+          this at 0.0, otherwise to (vmax-abs(vmin))/(2*vmax)
+      midpoint : The new center of the colormap. Defaults to
+          0.5 (no shift). Should be between 0.0 and 1.0; usually the
+          optimal value is abs(vmin)/(vmax+abs(vmin))
+          Only got this to work with:
+              1 - vmin/(vmax + abs(vmin))
+      stop : Offset from highets point in the colormap's range.
+          Defaults to 1.0 (no upper ofset). Should be between
+          0.5 and 1.0; if your dataset mean is positive you should leave
+          this at 1.0, otherwise to (abs(vmin)-vmax)/(2*abs(vmin))
+
+      2017/??/?? | taken from stack exchange
+      2017/10/11 | update so that crops shorter side of colorbar (so if data are in range [-1 100],
+                   100 will be dark red, and -1 slightly blue (and not dark blue))
+      '''
+    import numpy as np
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    if midpoint > 0.5:                                      # crop the top or bottom of the colourscale so it's not asymetric.
+        stop=(0.5 + (1-midpoint))
+    else:
+        start=(0.5 - midpoint)
+
+
+    cdict = { 'red': [], 'green': [], 'blue': [], 'alpha': []  }
+    # regular index to compute the colors
+    reg_index = np.hstack([np.linspace(start, 0.5, 128, endpoint=False),  np.linspace(0.5, stop, 129)])
+
+    # shifted index to match the data
+    shift_index = np.hstack([ np.linspace(0.0, midpoint, 128, endpoint=False), np.linspace(midpoint, 1.0, 129)])
+
+    for ri, si in zip(reg_index, shift_index):
+        r, g, b, a = cmap(ri)
+        cdict['red'].append((si, r, r))
+        cdict['green'].append((si, g, g))
+        cdict['blue'].append((si, b, b))
+        cdict['alpha'].append((si, a, a))
+    newcmap = matplotlib.colors.LinearSegmentedColormap(name, cdict)
+    plt.register_cmap(cmap=newcmap)
+    return newcmap
+
+
+
+def plot_ifgs(ifgs, pixel_mask, title, n_rows = 3):
+    """
+    Function to plot a time series of S1 ifgs in a single figure.  
+    Useful for quickly visualising the full training or testing time series.  
+    Inputs:    
+        ifgs | pxt matrix of ifgs as columns (p pixels, t times)
+        pixel_mask | mask to turn spaital maps back to regular grided masked arrays
+        n_rows | number of columns for ifg plot to have.   
+    Ouptuts:
+        Figure
+    2018/04/18 | taken from ifg_plot_v2
+    2020/05/07 | Updated
+    
+    """ 
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from auxiliary_functions import remappedColorMap
+   
+    # 1: colour map stuff
+    ifg_colours = plt.get_cmap('coolwarm')
+    cmap_mid = 1 - np.max(ifgs)/(np.max(ifgs) + abs(np.min(ifgs)))          # get the ratio of the data that 0 lies at (eg if data is -15 to 5, ratio is 0.75)
+    print('Cmap centre: ' + str(cmap_mid))
+    if cmap_mid > 0.5:
+        ifg_colours_cent = remappedColorMap(ifg_colours, start=0.0, midpoint=cmap_mid, stop=(0.5 + (1-cmap_mid)), name='shiftedcmap')
+    else:
+        ifg_colours_cent = remappedColorMap(ifg_colours, start=(0.5 - cmap_mid), midpoint=cmap_mid, stop=1, name='shiftedcmap')
+    
+    
+    # 2: Set-up the plot
+    n_cols = int(np.ceil(ifgs.shape[0]/float(n_rows)))
+    f = plt.figure(figsize=(10,4))
+    f, axes = plt.subplots(n_rows, n_cols)
+    f.suptitle(title, fontsize=14)
+    f.canvas.set_window_title(title)
+
+    # 3: loop through plotting ifgs
+    for ifg_n, axe in enumerate(np.ravel(axes)):
+        axe.set_yticks([])
+        axe.set_xticks([])
+        try:
+            ifg = col_to_ma(ifgs[ifg_n,:], pixel_mask = pixel_mask)                                        # convert row vector to rank 2 masked array
+            im = axe.imshow(ifg, cmap = ifg_colours_cent, vmin=np.min(ifgs), vmax=np.max(ifgs))            # 
+        except:
+            f.delaxes(axe)
+        
+
+        
+    
+    # i = 0
+    # for row_count in range(n_rows):
+    #     for col_count in range(n_cols):
+    #         one_axes = axes[row_count, col_count]
+    #         one_axes.set_yticks([])
+    #         one_axes.set_xticks([])
+    #         one_axes.set_title(f"Ifg. {i}", fontsize = 8)
+    #         try:
+    #             ifg = col_to_ma(ifgs[i,:], pixel_mask = pixel_mask)                                             # convert row vector to rank 2
+    #             im = one_axes.imshow(ifg, cmap = ifg_colours_cent, vmin=np.min(ifgs), vmax=np.max(ifgs))            # either plot with shared colours
+    #         except:
+    #             f.delaxes(one_axes)
+    #         i += 1
+
+    # 4: shared colorbar
+    f.subplots_adjust(right=0.87)            
+    cbar_ax = f.add_axes([0.87, 0.01, 0.02, 0.3])
+    cbar = f.colorbar(im, cax=cbar_ax)
+    cbar.set_label('Combined Signal (m)', fontsize = 8)
 
 #%%
 
