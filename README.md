@@ -32,6 +32,7 @@ We can add deformation from a pont (Mogi) source at a latitude and longitude of 
 ![06_Deformaiton_signal](https://user-images.githubusercontent.com/10498635/81289526-7ad00480-905e-11ea-87c2-59ef66eec217.png)
 
 And also generate a turbulent APS:
+
 ![09_Turbulent_APS_-_just_spatially_correlated_noise](https://user-images.githubusercontent.com/10498635/81289549-84f20300-905e-11ea-9731-acbd1f73a865.png)
 
 Before combining the signals to make an interferogram:
