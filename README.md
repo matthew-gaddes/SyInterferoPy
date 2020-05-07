@@ -27,7 +27,7 @@ Or just as easily switch to a different volcano, such as Vesuvius:\
 And convert the Campi Flegrei DEM into a topographically correlated APS:
 ![08_Topographically_correlated_APS](https://user-images.githubusercontent.com/10498635/81289548-84596c80-905e-11ea-8100-27d6e9c21c01.png)
 
-We can add deformation from a pont (Mogi) source at a latitude and longitude of our choice, and set its depth and volume change (in m):\
+We can add deformation from a point (Mogi) source at a latitude and longitude of our choice, and set its depth and volume change (in m/m^3):\
 <code>deformation_centre = [(40.84, 14.14), 2000 , 1e6]            </code>
 ![06_Deformaiton_signal](https://user-images.githubusercontent.com/10498635/81289526-7ad00480-905e-11ea-87c2-59ef66eec217.png)
 
