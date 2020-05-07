@@ -40,5 +40,5 @@ Before combining the signals to make an interferogram:
 
 
 Or set the constituent signals' temporal behaviour to make a time series:
+![Synthetic_Interferograms](https://user-images.githubusercontent.com/10498635/81292573-bae5b600-9063-11ea-84cb-fc028c1eed07.png)
 
-![Synthetic_Interferograms:_increased_deformation_strength](https://user-images.githubusercontent.com/10498635/81292412-76f2b100-9063-11ea-8502-ed16ed037789.png)
