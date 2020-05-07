@@ -8,8 +8,8 @@ If you use this software in your research, please cite the [2019 JGR:SE paper](h
 <br>
 
 <h5>Installation:</h5>
-A suitable python environment can be created using the conda command:
-conda env create --file synthetic_interferogams.yml
+A suitable python environment can be created using the conda command:<br>
+<code>conda env create --file synthetic_interferogams.yml</code>
 
 <br>
 
@@ -24,7 +24,7 @@ Or just as easily switch to a different volcano, such as Vesuvius:\
 <code>scene_centre = [(40.82, 14.43), 20]</code>
 ![03_DEM_cropped_to_area_of_interest_for_new_location_(Vesuvius](https://user-images.githubusercontent.com/10498635/81289455-5c6a0900-905e-11ea-904d-dff238823018.png)
 
-And convert the DEM into a topographically correlated APS:
+And convert the Campi Flegrei DEM into a topographically correlated APS:
 ![08_Topographically_correlated_APS](https://user-images.githubusercontent.com/10498635/81289548-84596c80-905e-11ea-8100-27d6e9c21c01.png)
 
 We can add deformation from a pont (Mogi) source at a latitude and longitude of our choice, and set its depth and volume change (in m):\
