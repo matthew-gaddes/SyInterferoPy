@@ -3,7 +3,7 @@ Generate synthetic interferograms that are similar to those produced by the Sent
 
 Users can select any subaerial volcano that is covered by the SRTM3 digital elevaiton model (DEM), and create an interferogram for there containing deformation due to a point (Mogi) source, a topogrpahically correlated atmospheric phase screen (APS), and a turbulent APS.  Temporal behaviour for these signals can also be set to create time series of interferograms.  
 
-If you use this software in your research, please cite the [2019 JGR:SE paper](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2019JB017519) that describes its generation.  \
+If you use this software in your research, please cite the [2019 JGR:SE paper](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2019JB017519) that describes its generation.  
 
 <br>
 
