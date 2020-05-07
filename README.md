@@ -36,8 +36,9 @@ And also generate a turbulent APS:
 ![09_Turbulent_APS_-_just_spatially_correlated_noise](https://user-images.githubusercontent.com/10498635/81289549-84f20300-905e-11ea-9731-acbd1f73a865.png)
 
 Before combining the signals to make an interferogram:
-![_Combined](https://user-images.githubusercontent.com/10498635/81289551-84f20300-905e-11ea-8bd6-3cc51fc0d940.png)
+![_Combined](https://user-images.githubusercontent.com/10498635/81292410-765a1a80-9063-11ea-9c9c-e02684adb437.png)
 
 
 Or set the constituent signals' temporal behaviour to make a time series:
-![Synthetic_Interferograms:_increased_deformation_strength](https://user-images.githubusercontent.com/10498635/81289552-858a9980-905e-11ea-8c66-23480f006b9b.png)
+
+![Synthetic_Interferograms:_increased_deformation_strength](https://user-images.githubusercontent.com/10498635/81292412-76f2b100-9063-11ea-8502-ed16ed037789.png)
