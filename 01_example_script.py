@@ -25,7 +25,7 @@ from auxiliary_functions import col_to_ma, matrix_show, quick_dem_plot, plot_ifg
 scene_centre = [(40.84, 14.14), 20]                                                 # lat lon scene width(km) for area covered by interferogram
 deformation_centre = [(40.84, 14.14), 2000 , 1e6]                                            # lat lon depth(m) volume change(m) of point (Mogi) source
 
-dem_settings = {"download_dems"   : True,                                             # if don't need to download anymore, faster to set to false
+dem_settings = {"download_dems"   : False,                                             # if don't need to download anymore, faster to set to false
                 "void_fill"       : False,                                             # Best to leave as False here, dems can have voids, which it can be worth filling (but can be slow and requires scipy)
                 "path_tiles"      : './SRTM_3_tiles',                                 # folder to keep SRTM3 tiles in 
                 "pix_in_m"        : 92.6,                                             # pixels in m.  92.6m for a SRTM3 pixel on equator}        
@@ -123,14 +123,4 @@ plot_ifgs(X, water_mask, title = 'Synthetic Interferograms')
 A[:,0] *= 3                                                                         # increase the strength of the first column, which controls the deformation
 X = A@S + N                                                                         # do the mixing: X = AS + N
 plot_ifgs(X, water_mask, title = 'Synthetic Interferograms: increased deformation strength')
-
-
-
-#%%
-
-
-
-
-
-
 

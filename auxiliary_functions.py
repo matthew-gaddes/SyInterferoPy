@@ -523,7 +523,6 @@ def plot_ifgs(ifgs, pixel_mask, title, n_rows = 3):
     # 1: colour map stuff
     ifg_colours = plt.get_cmap('coolwarm')
     cmap_mid = 1 - np.max(ifgs)/(np.max(ifgs) + abs(np.min(ifgs)))          # get the ratio of the data that 0 lies at (eg if data is -15 to 5, ratio is 0.75)
-    print('Cmap centre: ' + str(cmap_mid))
     if cmap_mid > 0.5:
         ifg_colours_cent = remappedColorMap(ifg_colours, start=0.0, midpoint=cmap_mid, stop=(0.5 + (1-cmap_mid)), name='shiftedcmap')
     else:
@@ -532,7 +531,6 @@ def plot_ifgs(ifgs, pixel_mask, title, n_rows = 3):
     
     # 2: Set-up the plot
     n_cols = int(np.ceil(ifgs.shape[0]/float(n_rows)))
-    f = plt.figure(figsize=(10,4))
     f, axes = plt.subplots(n_rows, n_cols)
     f.suptitle(title, fontsize=14)
     f.canvas.set_window_title(title)
@@ -546,23 +544,6 @@ def plot_ifgs(ifgs, pixel_mask, title, n_rows = 3):
             im = axe.imshow(ifg, cmap = ifg_colours_cent, vmin=np.min(ifgs), vmax=np.max(ifgs))            # 
         except:
             f.delaxes(axe)
-        
-
-        
-    
-    # i = 0
-    # for row_count in range(n_rows):
-    #     for col_count in range(n_cols):
-    #         one_axes = axes[row_count, col_count]
-    #         one_axes.set_yticks([])
-    #         one_axes.set_xticks([])
-    #         one_axes.set_title(f"Ifg. {i}", fontsize = 8)
-    #         try:
-    #             ifg = col_to_ma(ifgs[i,:], pixel_mask = pixel_mask)                                             # convert row vector to rank 2
-    #             im = one_axes.imshow(ifg, cmap = ifg_colours_cent, vmin=np.min(ifgs), vmax=np.max(ifgs))            # either plot with shared colours
-    #         except:
-    #             f.delaxes(one_axes)
-    #         i += 1
 
     # 4: shared colorbar
     f.subplots_adjust(right=0.87)            
