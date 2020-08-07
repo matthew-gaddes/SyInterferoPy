@@ -10,7 +10,7 @@ import numpy as np
 import numpy.ma as ma
 import matplotlib.pyplot as plt
 
-from syinterferopy_functions import deformation_Mogi, atmosphere_topo, atmosphere_turb
+from syinterferopy_functions import atmosphere_topo, atmosphere_turb, deformation_wrapper
 from auxiliary_functions import dem_wrapper, col_to_ma, matrix_show, quick_dem_plot, plot_ifgs                        # smaller functions
 
 
@@ -30,15 +30,16 @@ from auxiliary_functions import dem_wrapper, col_to_ma, matrix_show, quick_dem_p
 ## Campi Flegrei
 dem_ll_width = [(14.14, 40.84), 20]                                                 # lon lat scene width(km) for area covered by interferogram
 deformation_ll = (14.14, 40.84,)                                                     # deformation lon lat
-                                                                    #, 2000 , 1e6]                                   # lat lon depth(m) volume change(m) of point (Mogi) source
+mogi_kwargs = {'volume_change' : 1e6,                           
+                'depth'         : 2000}                                                 # both in metres
 
 dem_settings = {"srtm_dem_tools_bin" : '/home/matthew/university_work/11_DEM_tools/SRTM-DEM-tools/' ,       # The python package SRTM-DEM-tools is required for making DEMs (that are used to synthesise topographically correlated signals).  
                                                                                                             # it can be downloaded from https://github.com/matthew-gaddes/SRTM-DEM-tools
                 "download_dems"      : False,                                                               # if don't need to download anymore, faster to set to false
                 "void_fill"          : False,                                                               # Best to leave as False here, dems can have voids, which it can be worth filling (but can be slow and requires scipy)
-                "path_tiles"         : './SRTM_3_tiles/',                                                    # folder to keep SRTM3 tiles in 
+                "path_tiles"         : './SRTM_3_tiles/',                                                   # folder to keep SRTM3 tiles in 
                 "m_in_pix"           : 92.6,                                                                # pixels in m.  92.6m for a SRTM3 pixel on equator       
-                "water_mask_resolution"    : 'i'}                                                                 # resolution of water mask.  c (crude), l (low), i (intermediate), h (high), f (full)
+                "water_mask_resolution"    : 'f'}                                                           # resolution of water mask.  c (crude), l (low), i (intermediate), h (high), f (full)
 
 n_interferograms = 20                                                               # number of interferograms in the time series
 
@@ -75,115 +76,18 @@ quick_dem_plot(dem_crop, "05 back to the original, 20km scene")                 
 water_mask = ma.getmask(dem_crop)                                                      # DEM has no values for water, and we have no radar return from water, so good to keep a mask available
 
 
-import sys; sys.exit()
-
 #%% Second, make a deformation signal
-
-def deformation_wrapper(dem, dem_ll_extent, deformation_ll):
-    """ A function to prepare grids of pixels and deformation sources specified in lon lat for use with 
-    deformation generating functions that work in metres.  
-    
-    Inputs:
-    Returns:
-    History:
-    
-    """
-    
-    import numpy as np    
-    import numpy.ma as ma
-    from auxiliary_functions import ll2xy, crop_matrix_with_ll
-    
-    deformation_pix = ll2xy((dem_ll_extent[2], dem_ll_extent[0]), 1201,  deformation_ll)            #lat lon of bottom left corner of dem, pixels/deg, and lon lat of deformation centre.  
-    
-    import ipdb; ipdb.set_trace()
-    
-    mogi_loc_pix[0,1] = np.size(dem, axis=0) - mogi_loc_pix[0,1]                                                                # convert xy in matrix stlye  (ie from the top left, and not bottom left)
-    mogi_loc_m = pix_in_m * mogi_loc_pix                                                                                            # convert to m
-    mogi_cent.append(np.array([[mogi_loc_m[0,0], mogi_loc_m[0,1], mogi_cent[1], mogi_cent[2]]]).T)              # (xloc (m), yloc(m), depth (m), volume change (m^3)
-    U_mogi = deformation_Mogi(mogi_cent[3],ijk_m,0.25,30e9)                                                                   # 3d displacement
-    look = np.array([[np.sin(heading)*np.sin(incidence)],
-                      [np.cos(heading)*np.sin(incidence)],
-                      [np.cos(incidence)]])                                                                     # ground to satelite unit vector
-    U_mogi_los = look.T @ U_mogi                                                                                # 3d displacement converted to LOS displacement
-    
-    x_pixs = (ll_extent[1] - ll_extent[0])*1200                     # coordinated of points in matrix form (ie 00 is top left)
-    y_pixs = (ll_extent[3] - ll_extent[2])*1200
-    
-   
-    defo_signal = np.reshape(U_mogi_los, (y_pixs, x_pixs))                                                        # column vector to rank 2 array
-
-
-    
-    defo_signal_crop, crop_ll_ur = crop_matrix_with_ll(defo_signal, (ll_extent[2], ll_extent[0]), 
-                                                       1200, source_cent[0], source_cent[1])
-
-    defo_signal_crop = ma.array(defo_signal_crop, mask = water_mask)
-    
-    return defo_signal, defo_signal_crop
-    
-    
-
-deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll)
-
-
-
-#%%
-
-def signal_deformation(dem, water_mask, mogi_cent, source_cent, ijk_m, ll_extent, pix_in_m=92.6, heading=192, incidence=32):
-    """ A function to make deformation from a mogi source and crop to size.  
-    Inputs:
-        dem | r2 array | dem for the region of interest.  Used to set size of deforamtion signal array
-        water_mask | r2 array  | used to mask the deformation signal
-        mogi_cent | list | (lat, lon), depth (m), volume change (m)
-        source_cent | list | (lat, lon), scene size (m)
-        ijk_m   | r2 array |x locations of pixels in m
-        ll_extent | 
-        pix_in_m
-        headins
-        incidence
-        
-    """
-    import numpy as np    
-    import numpy.ma as ma
-    from auxiliary_functions import ll2xy, crop_matrix_with_ll
-    
-    
-    mogi_loc_pix = ll2xy((ll_extent[2], ll_extent[0]), 1200, np.array([[mogi_cent[0][0], mogi_cent[0][1]]]))            #centre  
-    mogi_loc_pix[0,1] = np.size(dem, axis=0) - mogi_loc_pix[0,1]                                                                # convert xy in matrix stlye  (ie from the top left, and not bottom left)
-    mogi_loc_m = pix_in_m * mogi_loc_pix                                                                                            # convert to m
-    mogi_cent.append(np.array([[mogi_loc_m[0,0], mogi_loc_m[0,1], mogi_cent[1], mogi_cent[2]]]).T)              # (xloc (m), yloc(m), depth (m), volume change (m^3)
-    U_mogi = deformation_Mogi(mogi_cent[3],ijk_m,0.25,30e9)                                                                   # 3d displacement
-    look = np.array([[np.sin(heading)*np.sin(incidence)],
-                      [np.cos(heading)*np.sin(incidence)],
-                      [np.cos(incidence)]])                                                                     # ground to satelite unit vector
-    U_mogi_los = look.T @ U_mogi                                                                                # 3d displacement converted to LOS displacement
-    
-    x_pixs = (ll_extent[1] - ll_extent[0])*1200                     # coordinated of points in matrix form (ie 00 is top left)
-    y_pixs = (ll_extent[3] - ll_extent[2])*1200
-    
-    #import ipdb; ipdb.set_trace()
-    
-    defo_signal = np.reshape(U_mogi_los, (y_pixs, x_pixs))                                                        # column vector to rank 2 array
-
-
-    
-    defo_signal_crop, crop_ll_ur = crop_matrix_with_ll(defo_signal, (ll_extent[2], ll_extent[0]), 
-                                                       1200, source_cent[0], source_cent[1])
-
-    defo_signal_crop = ma.array(defo_signal_crop, mask = water_mask)
-    
-    return defo_signal, defo_signal_crop
-
-
 
 signals_m = {}                                                                              # these should be in metres
 
-_, signals_m["deformation"] = signal_deformation(dem, water_mask, deformation_centre, scene_centre, ijk_m, ll_extent)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'mogi', **mogi_kwargs)
+signals_m["deformation"] = ma.array(los_grid, mask = water_mask)
 matrix_show(signals_m["deformation"], title = "06 Deformaiton signal")
 
-# we can offset of the deformaiton signal (ie set a new lat lon)
-deformation_centre = [(40.83, 14.12), 2000 , 1e6]                                     # lat lon depth(m) volume change(m) of hte deformation signal
-_, signals_m["deformation"] = signal_deformation(dem, water_mask, deformation_centre, scene_centre, ijk_m, ll_extent)
+# we can offset of the deformaiton signal (ie set a new lon lat)
+deformation_ll = (14.17, 40.88,)                                                     # deformation lon lat are changed
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'mogi', **mogi_kwargs)
+signals_m["deformation"] = ma.array(los_grid, mask = water_mask)
 matrix_show(signals_m["deformation"], title = "07 Deformaiton signal - shifted")
 
 

@@ -186,10 +186,7 @@ def crop_matrix_with_ll(im, im_ll, pixs2deg, centre_ll, square):
     y_high = centre_xy[0,1] + pixs2km*(square/2.0)
     if y_high > y_pixs:                                         # as above
         y_high = y_pixs                                                  
-
-
-    #import ipdb; ipdb.set_trace()
-    
+   
     im_crop = im[int(y_low):int(y_high), int(x_low):int(x_high)]                    # do the cropping
     ll_lowleft = (centre_ll[0] - (square/2.0)/km_per_deg, centre_ll[1] - (square/2.0)/km_per_deg)                   # work out the lonlats of the corners of the cropped dem
     ll_upright = (centre_ll[0] + (square/2.0)/km_per_deg, centre_ll[1] + (square/2.0)/km_per_deg)
@@ -204,9 +201,9 @@ def crop_matrix_with_ll(im, im_ll, pixs2deg, centre_ll, square):
 def ll2xy(bottom_left_ll, pix2deg, points_ll):
     """    
     Input:
-        bottom_left_ll | 1x2 np.array (lat lon) |lat long of bottom left pixel of xy space
-        deg2pix | 1 |number of pixels in 1 deg (e.g. 1201 for SRTM3)
-        points_ll  | nx2   np.array (lon lat)| n >= 1 for it to work (ie no 1d arrays, must be at least 1x2)
+        bottom_left_ll | 1x2 np.array | lon lat of bottom left pixel of xy space
+        deg2pix | int | number of pixels in 1 deg (e.g. 1201 for SRTM3)
+        points_ll  | nx2   np.array | n >= 1 for it to work (ie no 1d arrays, must be at least 1x2).  lons in column 1, lats in column 2
     Output:
         points_xy | nx2 | (x y) in pixels from lower left corner as intergers 
                                 Careful, as matrix indices are from top left forner 

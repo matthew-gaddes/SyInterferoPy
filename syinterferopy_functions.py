@@ -8,14 +8,120 @@ Created on Wed Aug  5 15:22:56 2020
 #%%
 
 
+def deformation_wrapper(dem, dem_ll_extent, deformation_ll, source, m_in_pix = 92.6,
+                        asc_or_desc = 'asc', incidence = 23, **kwargs):
+    """ A function to prepare grids of pixels and deformation sources specified in lon lat for use with 
+    deformation generating functions that work in metres.  
+    
+    Inputs:
+        dem | rank 2 masked array | The dem, with water masked.   
+        dem_ll_extent | list of tuples | [(lon lat lower left corner), (lon lat upper right corner)]
+        deformation_ll | tuple | (lon, lat) of centre of deformation source.  
+        source | string | mogi or quake or dyke or sill
+        m_in_pix | float |x number of metres in 1 pixel.  92.6 for 3 arc second (i.e. SRTM3)
+        asc_or_dec | string | 'asc' or 'desc' or 'random'.  If set to 'random', 50% chance of each.  
+        incidence | float | satellite incidence angle.  
+        **kwargs | various parameters required for each type of source.  E.g. opening, as opposed to slip or volumne change etc.  
+    
+    Returns:
+        los_grid | rank 2 array | displacment in satellite LOS at each location.  
+        x_grid | rank 2 array | x displacement at each location
+        y_grid | rank 2 array | y displacement at each location
+        z_grid | rank 2 array | z displacement at each location
+    
+    History:
+        2020/08/07 | MEG | Written.  
+    """
+    
+    import numpy as np    
+    import numpy.ma as ma
+    from auxiliary_functions import ll2xy
+    
+         
+    # 0: Make a satellite look vector.  
+    if asc_or_desc == 'asc':
+        heading = 192.04
+    elif asc_or_desc == 'desc':
+        heading = 012.04
+    elif asc_or_desc == 'random':
+        if (-0.5+np.random.rand()) < 0.5:
+            heading = 192.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are descending
+        else:
+            heading = 012.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are ascending
+    else:
+        raise Exception(f"'asc_or_desc' must be either 'asc' or 'desc' or 'random', but is currently {asc_or_desc}.  Exiting.   ")
+
+    # matlab implementation    
+    deg2rad = np.pi/180
+    sat_inc = 90 - incidence
+    sat_az  = 360 - heading
+#    sat_inc=Incidence                                                      # hmmm - why the different definition?
+ #   sat_az=Heading;        
+    los_x=-np.cos(sat_az*deg2rad)*np.cos(sat_inc*deg2rad);
+    los_y=-np.sin(sat_az*deg2rad)*np.cos(sat_inc*deg2rad);
+    los_z=np.sin(sat_inc*deg2rad);
+    los_vector = np.array([[los_x],
+                            [los_y],
+                            [los_z]])                                          # Unit vector in satellite line of site    
+    # my Python implementaiton
+    # look = np.array([[np.sin(heading)*np.sin(incidence)],
+    #               [np.cos(heading)*np.sin(incidence)],
+    #               [np.cos(incidence)]])                                                                     # ground to satelite unit vector
+
+    
+    # 1: Make a grid of points in metres to be passed to deformation functions.  
+    x = m_in_pix * np.arange(0, dem.shape[1])
+    y = m_in_pix * np.arange(0, dem.shape[0])
+    xx, yy = np.meshgrid(x, y)
+    yy = np.flipud(yy)
+    # import matplotlib.pyplot as plt
+    # f, axes = plt.subplots(1)
+    # axes.imshow(yy)
+
+
+    xx = np.ravel(xx)
+    yy = np.ravel(yy)
+    zz = np.zeros(xx.shape)                                                                  # observations of deformation will be at the surface.  
+    xyz_m = np.vstack((xx[np.newaxis,:], yy[np.newaxis,:], zz[np.newaxis,:]))                        # x is row1, y is row 2, z is row 3
+    
+    
+
+    
+
+    # 2: calculate deformation location in the new metres from lower left coordinate system.  
+    deformation_xy = ll2xy(np.asarray(dem_ll_extent[0])[np.newaxis,:], 1201,  
+                           np.asarray(deformation_ll)[np.newaxis,:])            #1x2 array of lon lat of bottom left corner and of points of interest (the deformation lon lat), and the number of pixels in a degree
+    
+    #deformation_xy[0,1] = np.size(dem, axis=0) - deformation_xy[0,1]                        # originally xy was from bottom left (is as per axes) but now convert to matrix style where 0,0 is top left
+    deformation_m = deformation_xy * m_in_pix                                               # convert from number of pixels from lower left corner to number of metres from lower left corner, 1x2 array.  
+    
+
+    # 3: Calculate the deformation:
+    if source == 'mogi':
+        model_params = np.array([deformation_m[0,0], deformation_m[0,1], kwargs['depth'], kwargs['volume_change']])[:,np.newaxis]
+        U = deformation_Mogi(model_params, xyz_m, 0.25,30e9)                                                                   # 3d displacement, xyz are rows, each point is a column.  
+    elif (source == 'quake') or (source == 'dyke') or (source == 'sill'):
+        U = deformation_eq_dyke_sill(source, (deformation_m[0,0], deformation_m[0,1]),
+                                     xyz_m, n_pixs = dem.shape[0], m_in_pix = m_in_pix,  **kwargs)
+    else:
+        raise Exception(f"'source' can be eitehr 'mogi', 'quake', 'dyke', or 'sill', but not {source}.  Exiting.  ")
+    
+    # 4: convert the xyz deforamtion in movement in direction of satellite LOS (ie. upwards = positive, despite being range shortening)    
+    x_grid = np.reshape(U[0,], (len(y), len(x)))
+    y_grid = np.reshape(U[1,], (len(y), len(x)))
+    z_grid = np.reshape(U[2,], (len(y), len(x)))
+    los_grid = x_grid*los_vector[0,0] + y_grid*los_vector[1,0] + z_grid*los_vector[2,0]
+    
+    return los_grid, x_grid, y_grid, z_grid
+ 
+
 
 
 
 #%%
 
 
-def deformation_eq_dyke_sill_(source, n_pixs = 324, m_in_pix = 90, asc_or_desc = 'asc', incidence = 23,
-                             **kwargs):    
+def deformation_eq_dyke_sill(source, source_xy_m, xyz_m, n_pixs = 324, m_in_pix = 90,  **kwargs):    
     """
     A function to create deformation patterns for either an earthquake, dyke or sill.  
     This functions calls disloc3d4, which then calls dc3d4 (earthquake), dc3d5 (dyke), or dc3d6 (sill).  
@@ -33,10 +139,10 @@ def deformation_eq_dyke_sill_(source, n_pixs = 324, m_in_pix = 90, asc_or_desc =
 
     Inputs:
         source | string | quake or dyke or sill
+        source_xy_m | tuple | x and y location of centre of source, in metres.  
+        xyz_m | rank2 array | x and y locations of all points in metres.  0,0 is top left?  
         n_pixs | int | rank 2 arrays returned will be square, and with this many pixels on each side.  
         m_in_pix | int | sets the size of a pixel.  defaults is 90m for SRTM3 resolution.  
-        asc_or_dec | string | 'asc' or 'desc' or 'random'.  If set to 'random', 50% chance of each.  
-        incidence | float | satellite incidence angle.  
         
         examples of kwargs:
             
@@ -90,55 +196,35 @@ def deformation_eq_dyke_sill_(source, n_pixs = 324, m_in_pix = 90, asc_or_desc =
     import numpy as np
     from oct2py import Oct2Py  
     
-    oc = Oct2Py(temp_dir="/home/matthew/university_work/01_blind_signal_separation_python/14_Synthetic_Interferograms_GitHub/m_files/octave_temp_dir/")
-    oc.addpath("/home/matthew/university_work/01_blind_signal_separation_python/14_Synthetic_Interferograms_GitHub/m_files/")
+    oc = Oct2Py(temp_dir="./m_files/octave_temp_dir/")
+    oc.addpath("./m_files/")
     
-       
-    # 1:  Setting for heading and elastic parameters.  
-    if asc_or_desc == 'asc':
-        heading = 192.04
-    elif asc_or_desc == 'desc':
-        heading = 012.04
-    elif asc_or_desc == 'random':
-        if (-0.5+np.random.rand()) < 0.5:
-            heading = 192.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are descending
-        else:
-            heading = 012.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are ascending
-    else:
-        raise Exception(f"'asc_or_desc' must be either 'asc' or 'desc' or 'random', but is currently {asc_or_desc}.  Exiting.   ")
-    
+    # 1:  Setting for elastic parameters.  
     lame = {'lambda' : 2.3e10,                                                         # elastic modulus (Lame parameter, units are pascals)
-            'mu'     : 2.3e10}                                                         # shear modulus (Lame parameter, units are pascals)
+        'mu'     : 2.3e10}                                                         # shear modulus (Lame parameter, units are pascals)
     #v = lame['lambda'] / (2*(lame['lambda'] + lame['mu']));                         #  calculate poisson's ration
-            
-    # 2:  Calculate LOS_vector from Heading and Incidence
-    deg2rad = np.pi/180
-    sat_inc = 90 - incidence
-    sat_az  = 360 - heading
-    #sat_inc=Incidence                                                      # hmmm - why the different definition?
-    #sat_az=Heading;        
-    los_x=-np.cos(sat_az*deg2rad)*np.cos(sat_inc*deg2rad);
-    los_y=-np.sin(sat_az*deg2rad)*np.cos(sat_inc*deg2rad);
-    los_z=np.sin(sat_inc*deg2rad);
-    los_vector = np.array([[los_x],
-                           [los_y],
-                           [los_z]])                                          # Unit vector in satellite line of site    
         
         
     # 2: set up regular grid
     min_max = int((m_in_pix * (n_pixs-1)) / 2)                                    # clcaulte number of m to go in each direction to get the right number of pixels
-    x = np.arange(-min_max, min_max+1, m_in_pix)
-    y = np.arange(-min_max, min_max+1, m_in_pix)
+    x = np.arange(-min_max, min_max+1, m_in_pix)                                  # when the grid is set like this, 0 is in the middle (and it goes from -10000 to 10000 for a scene of width 20km)
+    y = np.arange(-min_max, min_max+1, m_in_pix)                                            
     xx, yy = np.meshgrid(x, y)
     xx = np.ravel(xx)
     yy = np.ravel(yy)
     coords = np.vstack((xx[np.newaxis,:], yy[np.newaxis,:]))                        # x is top row, y is bottom row
+       
+    # import matplotlib.pyplot as plt
+    # both_arrays = np.hstack((np.ravel(coords), np.ravel(xyz_m)))
+    # f, axes = plt.subplots(1,2)
+    # axes[0].imshow(coords, aspect = 'auto', vmin = np.min(both_arrays), vmax = np.max(both_arrays))                 # goes from -1e4 to 1e4
+    # axes[1].imshow(xyz_m, aspect = 'auto', vmin = np.min(both_arrays), vmax = np.max(both_arrays))                  # goes from 0 to 2e4
     
     
     # 3: set 10x1 of model parameters needed by disloc3d4, and call
     model = np.zeros((10,1))
-    model[0,0] = 1                                                  # some parameters are shared for all three types and can be set here
-    model[1,0] = 1
+    model[0,0] = source_xy_m[0]                                                  # some parameters are shared for all three types and can be set here
+    model[1,0] = source_xy_m[1]
     model[2,0] = kwargs['strike']
     model[3,0] = kwargs['dip']
     model[6,0] = kwargs['length']
@@ -163,15 +249,10 @@ def deformation_eq_dyke_sill_(source, n_pixs = 324, m_in_pix = 90, asc_or_desc =
     else:
         raise Exception(f"'Source' must be either 'quake', 'dyke', or 'sill', but is set to {source}.  Exiting.")
     
-    U = oc.disloc3d4(model, coords, lame['lambda'], lame['mu'])                           # U is 3xnpoints and is the displacement in xyz directions.  
-    
-    # 5: change from xyz deformation to in satellite LOS
-    xgrid = np.reshape(U[0,], (len(y), len(x)))
-    ygrid = np.reshape(U[1,], (len(y), len(x)))
-    zgrid = np.reshape(U[2,], (len(y), len(x)))
-    los_grid = xgrid*los_vector[0,0] + ygrid*los_vector[1,0] + zgrid*los_vector[2,0]
-    
-    return xgrid, ygrid, zgrid, los_grid
+    U = oc.disloc3d4(model, xyz_m[:2,], lame['lambda'], lame['mu'])                           # U is 3xnpoints and is the displacement in xyz directions.  
+                                                                                              # Note that disloc3d4 only wants xy and assumes z is 0 (hence only taking first two rows).  
+       
+    return U
 
 
 
