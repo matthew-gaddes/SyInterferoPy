@@ -1,14 +1,15 @@
-function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3) 
-%% function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
+function [ux,uy,uz,err] = dc3d5(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
+%% function [ux,uy,uz,err] = dc3d5(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 %%
 %% Direct Translation of Pete Clarke's dc3d3.c into octave code
 %% dc3d3.c is itself a translation of Okada's dc3d.f subroutine into C code
-%% ...which has been pruned to compute ux,uy,uz for z=0 only, no tensile 
+%% ...which has been pruned to compute ux,uy,uz for z=0 only, no tensile
 %% components, depth=0
 %%
 %% tjw 11-sept-02
 %% vectorized by gjf
 %% added tensile component back in by tjw
+%% MEG 2020/08/10  - changed fuction name from dc3d to dc3d4 to match file name 
 
 %% Constants
      F0 = 0;
@@ -31,7 +32,7 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%                                % 
+%                                %
 %%dccon0 "subroutine"
 % Calculates medium and fault dip constants
      c0_alp3 = (F1-alpha)/alpha;
@@ -54,14 +55,14 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 
      jxi = (((x-al1).*(x-al2))<=F0);
      jet = (((p-aw1).*(p-aw2))<=F0);
-     
+
      for k = 1:2
-       if (k==1) et = p-aw1; else et = p-aw2; end 
+       if (k==1) et = p-aw1; else et = p-aw2; end
        for j = 1:2
          if (j==1) xi = x-al1; else xi = x-al2; end
 
 
-% 
+%
 
 %       disp([x(1) y(1) p(1) q(1) jxi(1) jet(1)])
 
@@ -70,9 +71,9 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 %%dccon2 "subroutine"
 % calculates station geometry constants for finite source
 
-       etq_max=max([abs(et); abs(q)]); 
+       etq_max=max([abs(et); abs(q)]);
        dc_max = max([abs(xi); etq_max]);
- 
+
 %       dc_max = max(abs(xi),max(abs(et),abs(q)));
 %       if ((abs(xi/dc_max) < EPS) || (abs(xi) < EPS)) xi = F0; end
 %       if ((abs(et/dc_max) < EPS) || (abs(et) < EPS)) et = F0; end
@@ -95,12 +96,12 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 
        c2_r = sqrt(dc_xi.^2 + dc_et.^2 + dc_q.^2);
 
-       if (sum((c2_r) == F0) > 0)  
+       if (sum((c2_r) == F0) > 0)
            disp(['singularity error']);
            ux=0;
            uy=0;
            uz=0;
-           err=1; 
+           err=1;
            return;
        end
 
@@ -112,8 +113,8 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
        c2_tt = atan(dc_xi.*dc_et./(dc_q.*c2_r));
        c2_tt = c2_tt-c2_tt.*(dc_q == F0);
 
-%       if ((dc_xi < F0) && (dc_q == F0) && (dc_et == F0)) c2_x11 = F0; 
-%       else 
+%       if ((dc_xi < F0) && (dc_q == F0) && (dc_et == F0)) c2_x11 = F0;
+%       else
 %         rxi = c2_r + dc_xi;
 %         c2_x11 = F1/(c2_r*rxi);
 %       end
@@ -146,15 +147,15 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 
                                 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	
-%         if ( ( (q==F0) && (((jxi==1) && (et==F0)) || ((jet==1)&&(xi==F0))) ) || (c2_r==F0) ) 
+
+%         if ( ( (q==F0) && (((jxi==1) && (et==F0)) || ((jet==1)&&(xi==F0))) ) || (c2_r==F0) )
 %           ux = 0; uy = 0; uz = 0;
 %	   err = 2; % singular problems: return error code
 %	   return;
 %         end
 
          if ( sum( (q == F0) .* ( ((jxi == 1).*(et == F0)) + ((jet == 1).*(xi == F0)) ) + (c2_r == F0) ) > 0)
-           ux = 0; 
+           ux = 0;
            uy = 0;
            uz = 0;
 	   err = 2; % singular problems: return error code
@@ -169,13 +170,13 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 
        rd = c2_r + c2_d;
 
-       if ( sum(rd < 1e-14) > 0) 
+       if ( sum(rd < 1e-14) > 0)
          disp(['ub']);disp([rd ,c2_r, c2_d,xi,et,q]);end
 
 
        if (c0_cd ~= F0)
 
-%	 if (xi==F0) ai4 = F0; 
+%	 if (xi==F0) ai4 = F0;
 %         else
 %           xx=sqrt(xi.^2+q.^2); % xx replaces x in original subroutine
 %           ai4 = F1/c0_cdcd * (xi/rd*c0_sdcd + F2*atan((et.*(xx+q*c0_cd) + xx*(c2_r+xx)*c0_sd) / (xi*(c2_r+xx)*c0_cd)) );
@@ -206,22 +207,22 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 
 
 %strike-slip contribution
-       if (disl1 ~=0) 
+       if (disl1 ~=0)
          du2(1,:) = - xi.*qy  - c2_tt  - c0_alp3*ai1*c0_sd;
 	 du2(2,:) = - q./c2_r          + c0_alp3*c2_y./rd*c0_sd;
 	 du2(3,:) =   q.*qy            - c0_alp3*ai2*c0_sd;
 
 %         size(disl1)
 %         size(du2)
- 
-	 dub = (disl1_3.*du2)/PI2; 
+
+	 dub = (disl1_3.*du2)/PI2;
        else
 	 dub = zeros(3,nx);
        end
 
-       
-       
-%       disp([du2(1,1) du2(2,1) du2(3,1)]) 
+
+
+%       disp([du2(1,1) du2(2,1) du2(3,1)])
 
 
 %dip-slip contribution
@@ -232,14 +233,14 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
 	 dub = dub + (disl2_3/PI2).*du2;
        end
 
-%       disp([du2(1,1) du2(2,1) du2(3,1)]) 
+%       disp([du2(1,1) du2(2,1) du2(3,1)])
 
 %tensile contribution
        if (disl3 ~=F0)
      du2(1,:) = q.*qy - c0_alp3*ai3*c0_sdsd;
      du2(2,:) = q.*qx + c0_alp3*xi./rd*c0_sdsd;
 	 du2(3,:) = et.*qx   +xi.*qy  - c0_alp3*ai4*c0_sdsd - c2_tt;
-     dub = dub + (disl3_3/PI2).*du2; 
+     dub = dub + (disl3_3/PI2).*du2;
        end
 %                                %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -250,11 +251,11 @@ function [ux,uy,uz,err] = dc3d3(alpha,x,y,dip,al1,al2,aw1,aw2,disl1,disl2,disl3)
        end
      end
 
-%       disp([dub(1,1) dub(2,1) dub(3,1)]) 
+%       disp([dub(1,1) dub(2,1) dub(3,1)])
 
-     ux = u(1,:); 
-     uy = u(2,:); 
-     uz = u(3,:); 
+     ux = u(1,:);
+     uy = u(2,:);
+     uz = u(3,:);
      err = 0;
 
-%       disp([ux(1) uy(1) uz(1)]) 
+%       disp([ux(1) uy(1) uz(1)])

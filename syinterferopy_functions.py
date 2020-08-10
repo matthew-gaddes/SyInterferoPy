@@ -74,19 +74,11 @@ def deformation_wrapper(dem, dem_ll_extent, deformation_ll, source, m_in_pix = 9
     y = m_in_pix * np.arange(0, dem.shape[0])
     xx, yy = np.meshgrid(x, y)
     yy = np.flipud(yy)
-    # import matplotlib.pyplot as plt
-    # f, axes = plt.subplots(1)
-    # axes.imshow(yy)
-
 
     xx = np.ravel(xx)
     yy = np.ravel(yy)
     zz = np.zeros(xx.shape)                                                                  # observations of deformation will be at the surface.  
     xyz_m = np.vstack((xx[np.newaxis,:], yy[np.newaxis,:], zz[np.newaxis,:]))                        # x is row1, y is row 2, z is row 3
-    
-    
-
-    
 
     # 2: calculate deformation location in the new metres from lower left coordinate system.  
     deformation_xy = ll2xy(np.asarray(dem_ll_extent[0])[np.newaxis,:], 1201,  
@@ -381,10 +373,12 @@ def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, v
         n_atms | int | number of atmospheres to generate
         n_pixs | int | side length (squares) for atmospheres in pixels
         Lc     | int | length scale, default is random and different for each one
+        difference | boolean | If difference, two atmospheres are generated and subtracted from each other to make a single atmosphere.  
+        verbose | boolean | Controls info printed to screen when running.  
         interpolate_threshold | int | if n_pixs is greater than this, images will be generated at size interpolate_threshold
                                         and then interpolate to the larger size.  This is as the distance matrix (which is
                                         of size n_pixs**2 x n_pixs**2 can get huge)
-        max_cm | float | maximum strength of atmosphere, in cm.  Strength is chosen from a uniform distribution.  
+        mean_cm | float | average max or min value of atmospheres that are created.  e.g. if 3 atmospheres have max values of 2cm, 3cm, and 4cm, their mean would be 3cm.  
     
     Outputs:
         ph_turb | r3 array | n_atms x n_pixs x n_pixs, UNITS ARE M
@@ -490,6 +484,36 @@ def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, v
     ph_turb_output_ma = ma.array(ph_turb_output, mask = water_mask_r3)
     
     return ph_turb_output_ma, Lc
+
+
+#%%
+
+def coherence_mask(n_pixs, water_mask, scale=2, threshold=0.8):
+    """A function to synthesis a mask of incoherent pixels
+    Inputs:
+        n_pixs | int | output is a square of this side length
+        scale | float | spatial scale of patterns.  larger = bigger.  try 1. - 2.5
+        threshold | decimal | value at which deemed incoherent.  Bigger value = less is incoherent
+    Returns:
+        mask_coh | rank 2 array | 
+        
+    2019_03_06 | MEG | Written.  
+    2020/08/10 | MEG | Update and add to SyInterferoPy.  
+    """
+    import numpy as np
+    print(f"Starting to generate a coherence mask... ", end = '')
+
+    mask_coh_values_r3, _ = atmosphere_turb(1, water_mask, n_pixs, Lc = scale, mean_cm = 1)
+    mask_coh_values = mask_coh_values_r3[0,]                                                                                # convert to rank 2
+    mask_coh_values = (mask_coh_values - np.min(mask_coh_values)) / np.max(mask_coh_values - np.min(mask_coh_values))       # rescale to range [0, 1]
+    
+    
+    #mask_coh_values = atmosphere_generator(n_pixs, 2, scale, verbose = False)[0]                                # always lies in range [0 1]
+    mask_coh = np.where(mask_coh_values > threshold, np.ones((n_pixs, n_pixs)), np.zeros((n_pixs, n_pixs)))      # anything above the threshold is masked - sort of looks like blotchy areas of incoherence
+    print("Done. ")
+    return mask_coh
+
+
 
 
 

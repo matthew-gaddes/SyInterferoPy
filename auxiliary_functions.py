@@ -28,8 +28,8 @@ def dem_wrapper(dem_ll_width, path_tiles, download_dems, void_fill, m_in_pix, sr
         dem_ma | masked array | large dem (whole number of tiles)
         dem_ma_crop | masked array | cropped to the scene width set in "crop"
         ijk_m | numpy array | x and y position of each pixel in metres
-        ll_extent | list | lat lons of large dem taht was made
-        ll_extent | list | lat lons of cropped dem that was made
+        ll_extent | list of tuples | [(lon lat lower left corner), (lon lat upper right corner)]
+        ll_extent_crop | list of tuples | [(lon lat lower left corner), (lon lat upper right corner)]
         
     History:
         2018/??/?? | MEG | Written
@@ -45,41 +45,30 @@ def dem_wrapper(dem_ll_width, path_tiles, download_dems, void_fill, m_in_pix, sr
     from dem_tools_lib import SRTM_dem_make, water_pixel_masker
     pixs_in_deg = 1201                                                                      # for srtm3
     
+    # 0: from centre of scene, work out how big the dem needs to be
+    ll_extent = [(np.floor(dem_ll_width[0][0]-1).astype(int), np.floor(dem_ll_width[0][1]-1).astype(int)),
+                 (np.ceil(dem_ll_width[0][0]+1).astype(int), np.ceil(dem_ll_width[0][1]+1).astype(int))]                           # (lon lat of lower left corner), (lon lat of upper right corner)
 
-    # 0: from centre of scene, work out how big the dem needs to be, and make it
-    ll_extent = [np.floor(dem_ll_width[0][0]-1), np.ceil(dem_ll_width[0][0]+1), 
-                 np.floor(dem_ll_width[0][1]-1) , np.ceil(dem_ll_width[0][1]+1)]             # west east south north - needs to be square!
-    ll_extent = [int(i) for i in ll_extent]                                                  # [lons lats], convert to intergers
+    
       
     # 1: Make the DEM
-    dem, lons, lats = SRTM_dem_make(ll_extent[0], ll_extent[1], ll_extent[2], ll_extent[3], SRTM1_or3 = 'SRTM3',
+    dem, lons, lats = SRTM_dem_make(ll_extent[0][0], ll_extent[1][0], ll_extent[0][1], ll_extent[1][1], SRTM1_or3 = 'SRTM3',
                                     SRTM3_tiles_folder = path_tiles, water_mask_resolution = None,                  
                                     download = download_dems, void_fill = void_fill)                                    # make the dem, note taht water_mask_resolution is set to None so that no (time consuming) masking of water bodies happens.  
 
     # 2: Crop the DEM to the required size
-    dem_crop, ll_extent_crop = crop_matrix_with_ll(dem, (ll_extent[0], ll_extent[2]), pixs_in_deg, dem_ll_width[0], dem_ll_width[1])      # crop the dem.  converted to lon lat format.  ll_extent_crop is [(lower left lon lat),(upper right lon lat)]
-    #ll_extent_crop = [ll_extent_crop_t[0][1], ll_extent_crop_t[1][1], ll_extent_crop_t[0][0], ll_extent_crop_t[1][0]]                       # convert to [lons lats] format
+    dem_crop, ll_extent_crop = crop_matrix_with_ll(dem, ll_extent[0], pixs_in_deg, dem_ll_width[0], dem_ll_width[1])      # crop the dem.  converted to lon lat format.  ll_extent_crop is [(lower left lon lat),(upper right lon lat)]
     
-    #import ipdb; ipdb.set_trace()
-    # del ll_extent_crop_t
-
     
-    """ fix here - what is being given to water pixel masker?"""
-
-
     # 3: Mask the water in the cropped DEM
     print(f"Masking the water bodies in the cropped DEM...", end = '')
-    # mask_water = water_pixel_masker(dem_crop, (ll_extent_crop[0], ll_extent_crop[2]), 
-    #                                           (ll_extent_crop[1], ll_extent_crop[3]), water_mask_resolution, verbose = False)        # make the mask for the cropped DEM, extent is given as lonlat_lowerleft and lonlat_upperright
-    
     mask_water = water_pixel_masker(dem_crop, ll_extent_crop[0], ll_extent_crop[1], water_mask_resolution, verbose = False)        # make the mask for the cropped DEM, extent is given as lonlat_lowerleft and lonlat_upperright
-    
     dem_crop_ma = ma.array(dem_crop, mask =  mask_water)                                                                             # apply the mask
     print(f" Done!")
 
     # 4: make a matrix of the x and y positions of each pixel of the cropped DEM.    
-    x_pixs = (ll_extent[1] - ll_extent[0])*1201                                                               # coordinated of points in matrix form (ie 00 is top left)
-    y_pixs = (ll_extent[3] - ll_extent[2])*1201
+    x_pixs = (ll_extent[1][0] - ll_extent[0][0])*1201                                                               # coordinated of points in matrix form (ie 00 is top left)
+    y_pixs = (ll_extent[1][1] - ll_extent[0][1])*1201
     X, Y = np.meshgrid(np.arange(0, x_pixs, 1), np.arange(0,y_pixs, 1))
     ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                          # pairs of coordinates of everywhere we have data
     ijk = np.vstack((ij, np.zeros((1,len(X)**2))))                                                                   #xy and 0 depth
@@ -93,50 +82,94 @@ def dem_wrapper(dem_ll_width, path_tiles, download_dems, void_fill, m_in_pix, sr
 
 #%% other less exciting functions 
 
-def matrix_show(matrix, title='', ax = None, fig = None, db = False):
-    """Visualise a matrix 
+# def matrix_show(matrix, title='', ax = None, fig = None, db = False):
+#     """Visualise a matrix 
+#     Inputs:
+#         matrix | r2 array or masked array
+#         title | string
+#         ax | matplotlib axes
+#         db | boolean | bug fix for Spyder debugging.  If True, will allow figure to show when 
+#                         debugging
+    
+#     2017/10/18 | update so can be passed an axes and plotted in an existing figure
+#     2017/11/13 | fix bug in how colorbars are plotted.  
+#     2017/12/01 | fix bug if fig is not None
+#     """
+#     import matplotlib.pyplot as plt
+#     import numpy as np
+    
+#     if ax is None:
+#         fig, ax = plt.subplots()
+#     matrix = np.atleast_2d(matrix)                   # make at least 2d so can plot column/row vectors
+    
+#     if isinstance(matrix[0,0], np.bool_):           # boolean arrays will plot, but mess up the colourbar
+#         matrix = matrix.astype(int)                 # so convert
+    
+#     matrixPlt = ax.imshow(matrix,interpolation='none', aspect='auto')
+#     fig.colorbar(matrixPlt,ax=ax)
+#     ax.set_title(title)
+#     fig.canvas.set_window_title(title)
+#     if db:
+#         plt.pause(1)
+
+
+def griddata_plot(griddata, griddata_ll_extent, title, dem_mode = True):
+    """ Plot dems quickly, using lats and lons for tick labels.  
+    
     Inputs:
-        matrix | r2 array or masked array
-        title | string
-        ax | matplotlib axes
-        db | boolean | bug fix for Spyder debugging.  If True, will allow figure to show when 
-                        debugging
-    
-    2017/10/18 | update so can be passed an axes and plotted in an existing figure
-    2017/11/13 | fix bug in how colorbars are plotted.  
-    2017/12/01 | fix bug if fig is not None
+        dem | rank 2 array | dem, can be a masked array or a normal array.  
+        dem_ll_extent | list of tuples | [(lon lat lower left corner), (lon lat upper right corner)]
+        title | string | figure title.  
+    Returns:
+        figure
+    History:
+        2020/07/?? | MEG | Written
+        2020/08/10 | MEG | Add tick labels in lon lat style.  
     """
     import matplotlib.pyplot as plt
     import numpy as np
     
-    if ax is None:
-        fig, ax = plt.subplots()
-    matrix = np.atleast_2d(matrix)                   # make at least 2d so can plot column/row vectors
+    def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
+        import matplotlib.colors as colors
+        new_cmap = colors.LinearSegmentedColormap.from_list(
+            'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
+            cmap(np.linspace(minval, maxval, n)))
+        return new_cmap 
     
-    if isinstance(matrix[0,0], np.bool_):           # boolean arrays will plot, but mess up the colourbar
-        matrix = matrix.astype(int)                 # so convert
     
-    matrixPlt = ax.imshow(matrix,interpolation='none', aspect='auto')
-    fig.colorbar(matrixPlt,ax=ax)
-    ax.set_title(title)
-    fig.canvas.set_window_title(title)
-    if db:
-        plt.pause(1)
-
-
-
-
-def quick_dem_plot(dem, title):
-    """ Plot dems quickly
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
+    if dem_mode:
+        cmap = plt.get_cmap('terrain')                                                          # makes sense for DEMs
+        cmap = truncate_colormap(cmap, 0.2, 1)                                                  # but by deafult it starts at blue, so crop (truncate) that part off.  
+    else:
+        cmap = plt.get_cmap('coolwarm')
+        cmap_mid = 1 - np.max(griddata)/(np.max(griddata) + abs(np.min(griddata)))          # get the ratio of the data that 0 lies at (eg if data is -15 to 5, ratio is 0.75)
+        if cmap_mid > 0.5:
+            cmap = remappedColorMap(cmap, start=0.0, midpoint=cmap_mid, stop=(0.5 + (1-cmap_mid)), name='shiftedcmap')
+        else:
+            cmap = remappedColorMap(cmap, start=(0.5 - cmap_mid), midpoint=cmap_mid, stop=1, name='shiftedcmap')
+    
     
     fig1, ax = plt.subplots()                                                       # make a figure to show it
     fig1.canvas.set_window_title(title)
-    fig1.suptitle(title)
-    matrixPlt = ax.imshow(dem, vmin = 0, vmax = np.max(dem))                                              # best to set lower limit to 0 as voids are filled with -32768 so mess the colours up
+    ax.set_title(title)
+    if dem_mode:
+        matrixPlt = ax.imshow(griddata, vmin = 0, vmax = np.max(griddata), cmap = cmap)          # best to set lower limit to 0 as voids are filled with -32768 so mess the colours up
+    else:
+        matrixPlt = ax.imshow(griddata, cmap=cmap)                                                          # if there are no voids, can just let 
     fig1.colorbar(matrixPlt,ax=ax)
+    
+    # create the tick labels which are lons and lats
+    lons = np.linspace(griddata_ll_extent[0][0],griddata_ll_extent[1][0], griddata.shape[1] )                             # get the longitude of the lower left corner of each pixel
+    xtick_pixel_n = np.linspace(0, griddata.shape[1]-1, 10).astype(int)
+    plt.xticks(xtick_pixel_n, np.round(lons[xtick_pixel_n],2), rotation = 'vertical')
+    ax.set_xlabel('Longitude (degs)')
+
+    lats = np.linspace(griddata_ll_extent[0][1],griddata_ll_extent[1][1], griddata.shape[0] )                             # get the latitude of lower left corner of each pixel
+    ytick_pixel_n = np.linspace(0, griddata.shape[0]-1, 10).astype(int)
+    plt.yticks(ytick_pixel_n, np.round(lats[ytick_pixel_n],2)[::-1])                                          # round to 2dp so doesn't fill figure.  Not entirely sure why ticks have to be reversed - possibly matplotlib is counting from top left and not bottom left
+    ax.set_ylabel('Latitude (degs)')
+    
+    fig1.tight_layout()    
     
     
     

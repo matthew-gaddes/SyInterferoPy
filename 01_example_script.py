@@ -5,24 +5,14 @@ Created on Thu Aug  1 10:14:02 2019
 
 @author: mgaddes
 """
-import sys
+
 import numpy as np
 import numpy.ma as ma
 import matplotlib.pyplot as plt
 
-from syinterferopy_functions import atmosphere_topo, atmosphere_turb, deformation_wrapper
-from auxiliary_functions import dem_wrapper, col_to_ma, matrix_show, quick_dem_plot, plot_ifgs                        # smaller functions
+from syinterferopy_functions import atmosphere_topo, atmosphere_turb, deformation_wrapper, coherence_mask
+from auxiliary_functions import dem_wrapper, col_to_ma, griddata_plot, plot_ifgs                        
 
-
-
-# from dem_tools import dem_wrapper                                             # used to create the DEM.  
-# from auxiliary_functions import signal_deformation                            # this will generate deformation
-# from auxiliary_functions import signal_atmosphere_turb                        # and the turbulent atmospheric signal (APS, spatially correlated noise, like a cloudy sky)
-# from auxiliary_functions import signal_atmosphere_topo                        # and the topographically corrleated atmospheric signal (APS)
-
-
-
-#plt.close('all')
 
 
 #%% ################################ Things to set ################################
@@ -48,22 +38,23 @@ n_interferograms = 20                                                           
 dem, dem_crop, ijk_m, ll_extent, ll_extent_crop = dem_wrapper(dem_ll_width, **dem_settings)             # make a dem (both original and cropped ones are returned by this function)
 
 # lets look at the big DEM 
-quick_dem_plot(dem, "01 A digital elevation model (DEM) of Italy, with no masking of water.  ")
+griddata_plot(dem, ll_extent, "01 A digital elevation model (DEM) of Italy, with no masking of water.  ")
 
 # lets look at the small dem
-quick_dem_plot(dem_crop, "02 DEM Cropped to area of interest, with water masked (as white)")
+griddata_plot(dem_crop, ll_extent_crop, "02 DEM Cropped to area of interest, with water masked (as white)")
+
 
 # lets change "scene_centre" to look somewhere else
 dem_ll_width = [(14.43, 40.82), 20]                                                                 # lat lon scene width(km), note small change to lat and lon
 dem, dem_crop, ijk_m, ll_extent, ll_extent_crop = dem_wrapper(dem_ll_width, **dem_settings)             # make a new dem 
-quick_dem_plot(dem_crop, "03 DEM cropped to area of interest for new location (Vesuvius")
+griddata_plot(dem_crop, ll_extent_crop,  "03 DEM cropped to area of interest for new location (Vesuvius")
 
 
 
 # Or we can change the 'width' argument of "scene_centre" to a bigger value, and bigger scene.  
 dem_ll_width = [(14.43, 40.82, ), 40]                                                         # lat lon scene width(km), note change to 40
 dem, dem_crop, ijk_m, ll_extent, ll_extent_crop = dem_wrapper(dem_ll_width, **dem_settings)             # make a new dem 
-quick_dem_plot(dem_crop, "04 DEM cropped to area of interest for new location (Vesuvius), 40km scene")
+griddata_plot(dem_crop, ll_extent_crop, "04 DEM cropped to area of interest for new location (Vesuvius), 40km scene")
 
 
 # and reset it to Campi Flegrei (and make a good, void filled one, which will be slow)
@@ -71,7 +62,7 @@ dem_settings['void_fill'] = True                                                
 print("quick fix")
 scene_centre = [(14.14, 40.84), 20]                                                     # lat lon scene width(km)
 dem, dem_crop, ijk_m, ll_extent, ll_extent_crop = dem_wrapper(scene_centre, **dem_settings)             # make a new dem 
-quick_dem_plot(dem_crop, "05 back to the original, 20km scene")                         # plot
+griddata_plot(dem_crop, ll_extent_crop, "05 back to the original, 20km scene")                         # plot
 
 water_mask = ma.getmask(dem_crop)                                                      # DEM has no values for water, and we have no radar return from water, so good to keep a mask available
 
@@ -82,27 +73,26 @@ signals_m = {}                                                                  
 
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'mogi', **mogi_kwargs)
 signals_m["deformation"] = ma.array(los_grid, mask = water_mask)
-matrix_show(signals_m["deformation"], title = "06 Deformaiton signal")
+griddata_plot(signals_m["deformation"], ll_extent_crop, "06 Deformaiton signal", dem_mode = False)                         # plot
 
 # we can offset of the deformaiton signal (ie set a new lon lat)
 deformation_ll = (14.17, 40.88,)                                                     # deformation lon lat are changed
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'mogi', **mogi_kwargs)
 signals_m["deformation"] = ma.array(los_grid, mask = water_mask)
-matrix_show(signals_m["deformation"], title = "07 Deformaiton signal - shifted")
-
+griddata_plot(signals_m["deformation"], ll_extent_crop, "07 Deformaiton signal - shifted", dem_mode = False)                         # plot
 
 
 #%% make a topograhically correlated atmospheric phase screen (APS), using the DEM
 
 signals_m['topo_correlated_APS'] = atmosphere_topo(dem_crop, strength_mean = 56.0, strength_var = 12.0, difference = True)                    # dem must be in metres
-matrix_show(signals_m["topo_correlated_APS"], title = "08 Topographically correlated APS")
+griddata_plot(signals_m["topo_correlated_APS"], ll_extent_crop, "Topographically correlated APS", dem_mode = False)                         # plot
 
 #%% make a turbulent APS (just spatially correlated noise)
 
 ph_turb, _ = atmosphere_turb(1, water_mask, dem_crop.shape[0], Lc = None, verbose=True, interpolate_threshold = 100, mean_cm = 2)
 signals_m["turbulent_APS"] = ph_turb[0,]
+griddata_plot(signals_m["turbulent_APS"], ll_extent_crop, "09 Turbulent APS - just spatially correlated noise", dem_mode = False)                         # plot
 
-matrix_show(signals_m["turbulent_APS"], title = "09 Turbulent APS - just spatially correlated noise")
 del ph_turb
 
 #%% Combine all the signals to make an interferogram
@@ -119,7 +109,22 @@ for signal_n, key in enumerate(signals_m.keys()):
     signals_m_rows[signal_n,:] = ma.compressed(signals_m[key])
     
 plot_ifgs(signals_m_rows, water_mask, title = 'Deformation / Topo correlated APS / Turbulent APS / Combined', n_rows = 1)
-    
+  
+
+#%% Note that we can also synthesise areas of incoherece and use these to update the mask
+
+mask_coherence_scale2 = coherence_mask(dem_crop.shape[0], water_mask, scale=2, threshold=0.7)                      # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
+mask_coherence_scale02 = coherence_mask(dem_crop.shape[0], water_mask, scale=20, threshold=0.6)                      # increasing the scale value slightly changes them to single bigger regions.  
+
+        
+f, axes = plt.subplots(1,2)
+f.suptitle('Example of coherence masks')
+axes[0].imshow(mask_coherence_scale2)
+axes[1].imshow(mask_coherence_scale02)
+
+mask_combined = np.logical_or(water_mask, mask_coherence_scale2)
+ifg_with_incoherence = ma.array(ma.getdata(signals_m["turbulent_APS"]), mask = mask_combined)
+griddata_plot(ifg_with_incoherence, ll_extent_crop, "10 Synthetic interferogram with incoherent regions", dem_mode = False)                         # plot
     
 
 #%% Lets make a time series
