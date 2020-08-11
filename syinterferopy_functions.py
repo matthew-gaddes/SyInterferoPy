@@ -24,7 +24,7 @@ def deformation_wrapper(dem, dem_ll_extent, deformation_ll, source, m_in_pix = 9
         **kwargs | various parameters required for each type of source.  E.g. opening, as opposed to slip or volumne change etc.  
     
     Returns:
-        los_grid | rank 2 array | displacment in satellite LOS at each location.  
+        los_grid | rank 2 masked array | displacment in satellite LOS at each location, with the same mask as the dem.  
         x_grid | rank 2 array | x displacement at each location
         y_grid | rank 2 array | y displacement at each location
         z_grid | rank 2 array | z displacement at each location
@@ -103,6 +103,8 @@ def deformation_wrapper(dem, dem_ll_extent, deformation_ll, source, m_in_pix = 9
     y_grid = np.reshape(U[1,], (len(y), len(x)))
     z_grid = np.reshape(U[2,], (len(y), len(x)))
     los_grid = x_grid*los_vector[0,0] + y_grid*los_vector[1,0] + z_grid*los_vector[2,0]
+    
+    los_grid = ma.array(los_grid, mask = ma.getmask(dem))                                            # mask the water parts of the scene.  
     
     return los_grid, x_grid, y_grid, z_grid
  
