@@ -1,4 +1,4 @@
-# SyIntereroPy
+# SyInteferoPy
 Generate synthetic interferograms that are similar to those produced by the Sentinel-1 satellites.  
 
 Users can select any subaerial region that is covered by the SRTM3 digital elevaiton model (DEM), and create an interferogram for there containing deformation due to a selection of simple sources, a topogrpahically correlated atmospheric phase screen (APS), and a turbulent APS.  The temporal behaviour of the  signals can also be set to create time series of interferograms, and regions of incoherence can also be synthesised.  
