@@ -47,17 +47,11 @@ Or set the constituent signals' temporal behaviour to make a time series:
 
 
 <h5>Deformation Examples (New in August 2020)</h5>
-
-If a user has Octave installed, the oct2py package can be used to call .m functions that describe deformation patterns associated with inflating sills, opening dykes, and earthquakes with a variety of source parameters.  The new example script (02_example_deformations.py) shows these in action:  
+Users can now generate deformation patterns for opening dykes and sills (i.e. Using Okada's 
 
 
 ![03:_Opening_Dyke](https://user-images.githubusercontent.com/10498635/89890070-a5d07400-dbca-11ea-8c17-c3bb9a8fa35c.png)
 
 ![04:_Inflating_Sill](https://user-images.githubusercontent.com/10498635/89890071-a6690a80-dbca-11ea-9ff9-c207e9086f1c.png)
 
-![05:_SS_fault_earthquake](https://user-images.githubusercontent.com/10498635/89890074-a701a100-dbca-11ea-8644-daa4409dae3d.png)
-
-![06:_Normal_fault_earthquake](https://user-images.githubusercontent.com/10498635/89890077-a701a100-dbca-11ea-8d7b-82b904b0447d.png)
-
-![07:_Thurst_fault_earthquake](https://user-images.githubusercontent.com/10498635/89890078-a79a3780-dbca-11ea-9f94-e7c0b40cff14.png)
 
