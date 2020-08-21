@@ -88,7 +88,7 @@ griddata_plot(signals_m["topo_correlated_APS"], ll_extent_crop, "Topographically
 
 #%% make a turbulent APS (just spatially correlated noise)
 
-ph_turb, _ = atmosphere_turb(1, water_mask, dem_crop.shape[0], Lc = None, verbose=True, interpolate_threshold = 100, mean_cm = 2)
+ph_turb, _ = atmosphere_turb(1, dem_crop.shape[0], water_mask, Lc = None, verbose=True, interpolate_threshold = 100, mean_cm = 2)
 signals_m["turbulent_APS"] = ph_turb[0,]
 griddata_plot(signals_m["turbulent_APS"], ll_extent_crop, "09 Turbulent APS - just spatially correlated noise", dem_mode = False)                         # plot
 
@@ -112,8 +112,8 @@ plot_ifgs(signals_m_rows, water_mask, title = 'Deformation / Topo correlated APS
 
 #%% Note that we can also synthesise areas of incoherece and use these to update the mask
 
-mask_coherence_scale2 = coherence_mask(dem_crop.shape[0], water_mask, scale=2, threshold=0.7)                      # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
-mask_coherence_scale02 = coherence_mask(dem_crop.shape[0], water_mask, scale=20, threshold=0.6)                      # increasing the scale value slightly changes them to single bigger regions.  
+mask_coherence_scale2 = coherence_mask(dem_crop.shape[0], scale=2, threshold=0.7)                      # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
+mask_coherence_scale02 = coherence_mask(dem_crop.shape[0], scale=20, threshold=0.6)                      # increasing the scale value slightly changes them to single bigger regions.  
 
         
 f, axes = plt.subplots(1,2)
@@ -130,7 +130,7 @@ griddata_plot(ifg_with_incoherence, ll_extent_crop, "10 Synthetic interferogram 
 
 S = np.vstack((ma.compressed(signals_m["deformation"]), ma.compressed(signals_m["turbulent_APS"])))         # signals will be stored as row vectors 
 
-ph_turb_m, _ = atmosphere_turb(n_interferograms, water_mask, dem_crop.shape[0], Lc = None, verbose=True, interpolate_threshold = 100, mean_cm = 2)
+ph_turb_m, _ = atmosphere_turb(n_interferograms, dem_crop.shape[0], water_mask, Lc = None, verbose=True, interpolate_threshold = 100, mean_cm = 2)
 N = np.zeros((n_interferograms, S.shape[1]))
 for row_n, ph_turb in enumerate(ph_turb_m):                                         # conver the noise (turbulent atmosphere) into a matrix of row vectors.  
     N[row_n,] = ma.compressed(ph_turb)

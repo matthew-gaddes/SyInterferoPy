@@ -6,11 +6,11 @@ channels:
 dependencies:
   - python=3.7.1                            # general
   - matplotlib=3.0.1
+  - matplotlib-base=3.2.2
   - basemap-data-hires                     # used to mask areas of water in DEMs, hires not necessarily needed, but generally worth it.
   - numpy
   - spyder                                # interactive plotting of ICASAR is designed to work with Spyder
   - scipy
-  - oct2py                                # To allow Octave to be used to run .m files.
   - ipdb
   - pip
   - pip:

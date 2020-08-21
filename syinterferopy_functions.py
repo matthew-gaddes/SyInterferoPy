@@ -117,8 +117,7 @@ def deformation_wrapper(dem, dem_ll_extent, deformation_ll, source, m_in_pix = 9
 
 def deformation_eq_dyke_sill(source, source_xy_m, xyz_m, n_pixs = 324, m_in_pix = 90,  **kwargs):    
     """
-    A function to create deformation patterns for either an earthquake, dyke or sill.  
-    This functions calls disloc3d4, which then calls dc3d4 (earthquake), dc3d5 (dyke), or dc3d6 (sill).  
+    A function to create deformation patterns for either an earthquake, dyke or sill.   Uses the Okada function from PyInSAR: https://github.com/MITeaps/pyinsar
     To aid in readability, different sources take different parameters (e.g. slip for a quake, opening for a dyke)
     are passed separately as kwargs, even if they ultimately go into the same field in the model parameters.  
     
@@ -186,69 +185,53 @@ def deformation_eq_dyke_sill(source, source_xy_m, xyz_m, n_pixs = 324, m_in_pix 
         
     History:
         2020/08/05 | MEG | Written
+        2020/08/21 | MEG | Switch from disloc3d.m function to compute_okada_displacement.py functions.  
     """    
     import numpy as np
-    from oct2py import Oct2Py  
-    
-    oc = Oct2Py(temp_dir="./m_files/octave_temp_dir/")
-    oc.addpath("./m_files/")
+    from pyinsar_okada_function import compute_okada_displacement
     
     # 1:  Setting for elastic parameters.  
     lame = {'lambda' : 2.3e10,                                                         # elastic modulus (Lame parameter, units are pascals)
-        'mu'     : 2.3e10}                                                         # shear modulus (Lame parameter, units are pascals)
-    #v = lame['lambda'] / (2*(lame['lambda'] + lame['mu']));                         #  calculate poisson's ration
-        
-        
-    # 2: set up regular grid
-    min_max = int((m_in_pix * (n_pixs-1)) / 2)                                    # clcaulte number of m to go in each direction to get the right number of pixels
-    x = np.arange(-min_max, min_max+1, m_in_pix)                                  # when the grid is set like this, 0 is in the middle (and it goes from -10000 to 10000 for a scene of width 20km)
-    y = np.arange(-min_max, min_max+1, m_in_pix)                                            
-    xx, yy = np.meshgrid(x, y)
-    xx = np.ravel(xx)
-    yy = np.ravel(yy)
-    coords = np.vstack((xx[np.newaxis,:], yy[np.newaxis,:]))                        # x is top row, y is bottom row
-       
+            'mu'     : 2.3e10}                                                         # shear modulus (Lame parameter, units are pascals)
+    v = lame['lambda'] / (2*(lame['lambda'] + lame['mu']))                             #  calculate poisson's ration
+      
     # import matplotlib.pyplot as plt
     # both_arrays = np.hstack((np.ravel(coords), np.ravel(xyz_m)))
     # f, axes = plt.subplots(1,2)
     # axes[0].imshow(coords, aspect = 'auto', vmin = np.min(both_arrays), vmax = np.max(both_arrays))                 # goes from -1e4 to 1e4
     # axes[1].imshow(xyz_m, aspect = 'auto', vmin = np.min(both_arrays), vmax = np.max(both_arrays))                  # goes from 0 to 2e4
-    
-    
-    # 3: set 10x1 of model parameters needed by disloc3d4, and call
-    model = np.zeros((10,1))
-    model[0,0] = source_xy_m[0]                                                  # some parameters are shared for all three types and can be set here
-    model[1,0] = source_xy_m[1]
-    model[2,0] = kwargs['strike']
-    model[3,0] = kwargs['dip']
-    model[6,0] = kwargs['length']
-    if source == 'quake':                                           # otherwise they need to be set for each type
-        model[4,0] = kwargs['rake']
-        model[5,0] = kwargs['slip']
-        model[7,0] = kwargs['top_depth']
-        model[8,0] = kwargs['bottom_depth']
-        model[9,0] = 1
-    elif source == 'dyke':
-        model[4,0] = 0
-        model[5,0] = kwargs['opening']
-        model[7,0] = kwargs['top_depth']
-        model[8,0] = kwargs['bottom_depth']
-        model[9,0] = 2    
-    elif source == 'sill':
-        model[4,0] = 0
-        model[5,0] = kwargs['opening']
-        model[7,0] = kwargs['depth']
-        model[8,0] = kwargs['width']
-        model[9,0] = 3        
+    if source == 'quake':
+        opening = 0
+        slip = kwargs['slip']
+        rake = kwargs['rake']
+        width = kwargs['bottom_depth'] - kwargs['top_depth']
+        centroid_depth = np.mean((kwargs['bottom_depth'] - kwargs['top_depth']))
+    elif source == 'dyke':                                                                               # ie dyke or sill
+        opening = kwargs['opening']
+        slip = 0
+        rake = 0
+        width = kwargs['bottom_depth'] - kwargs['top_depth']
+        centroid_depth = np.mean((kwargs['bottom_depth'] - kwargs['top_depth']))
+    elif source == 'sill':                                                                               # ie dyke or sill
+        opening = kwargs['opening']
+        slip = 0
+        rake = 0
+        centroid_depth = kwargs['depth']
+        width = kwargs['width']
     else:
         raise Exception(f"'Source' must be either 'quake', 'dyke', or 'sill', but is set to {source}.  Exiting.")
-    
-    U = oc.disloc3d4(model, xyz_m[:2,], lame['lambda'], lame['mu'])                           # U is 3xnpoints and is the displacement in xyz directions.  
-                                                                                              # Note that disloc3d4 only wants xy and assumes z is 0 (hence only taking first two rows).  
+        
+    # 3:  compute deformation using Okada function
+    U = displacement_array = compute_okada_displacement(source_xy_m[0], source_xy_m[1],                    # x y location, in metres
+                                                        centroid_depth,                                    # fault_centroid_depth, guess metres?  
+                                                        np.deg2rad(kwargs['strike']),
+                                                        np.deg2rad(kwargs['dip']),
+                                                        kwargs['length'], width,                           # length and width, in metres
+                                                        np.deg2rad(rake),                                  # rake, in rads
+                                                        slip, opening,                                     # slip (if quake) or opening (if dyke or sill)
+                                                        v, xyz_m[0,], xyz_m[1,:])                          # poissons ratio, x and y coords of surface locations.
        
     return U
-
-
 
 
 
@@ -363,7 +346,7 @@ def atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, difference 
 
 #%%
 
-def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, verbose = False,
+def atmosphere_turb(n_atms, n_pixs, water_mask = None, Lc = None, difference = False, verbose = False,
                     interpolate_threshold = 100, mean_cm = 2):
     """ A function to create synthetic turbulent atmospheres based on the 
     methods in Lohman Simmonds (sic?) 2005.  Note that due to memory issues,
@@ -374,6 +357,7 @@ def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, v
     Inputs:
         n_atms | int | number of atmospheres to generate
         n_pixs | int | side length (squares) for atmospheres in pixels
+        water_mask | rank 2 array | If supplied, this is applied to the atmospheres generated, convering them to masked arrays.  
         Lc     | int | length scale, default is random and different for each one
         difference | boolean | If difference, two atmospheres are generated and subtracted from each other to make a single atmosphere.  
         verbose | boolean | Controls info printed to screen when running.  
@@ -383,16 +367,17 @@ def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, v
         mean_cm | float | average max or min value of atmospheres that are created.  e.g. if 3 atmospheres have max values of 2cm, 3cm, and 4cm, their mean would be 3cm.  
     
     Outputs:
-        ph_turb | r3 array | n_atms x n_pixs x n_pixs, UNITS ARE M
+        ph_turb | r3 array | n_atms x n_pixs x n_pixs, UNITS ARE M.  Note that if a water_mask is provided, this is applied and a masked array is returned.  
         Lc      | r1 array | length scales used for each atmosphere        
         
     2019/09/13 | MEG | adapted extensively from a simple script
+    2020/10/12 | MEG | Change so that a water mask is optional.  
     """
     
     import numpy as np
     import numpy.ma as ma
     from scipy.spatial import distance
-    import scipy
+    from scipy import interpolate as scipy_interpolate
     
     def generate_correlated_noise(pixel_distances, Lc, n_pixs_generate):
         """ given a matrix of pixel distances and a length scale for the noise,
@@ -466,7 +451,7 @@ def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, v
             print('Interpolating to the larger size...', end = '')
         ph_turb_output = np.zeros((n_atms, n_pixs,n_pixs))                                  # initiate output
         for atm_n, atm in enumerate(ph_turb):
-            f = scipy.interpolate.interp2d(np.arange(0,n_pixs_generate), np.arange(0,n_pixs_generate), atm, kind='linear')
+            f = scipy_interpolate.interp2d(np.arange(0,n_pixs_generate), np.arange(0,n_pixs_generate), atm, kind='linear')
             ph_turb_output[atm_n,:,:] = f(np.linspace(0, n_pixs_generate, n_pixs), np.linspace(0, n_pixs_generate, n_pixs))
         if verbose:
             print('Done!')
@@ -481,16 +466,21 @@ def atmosphere_turb(n_atms, water_mask, n_pixs, Lc = None, difference = False, v
     
     ph_turb_output *= 0.01                                                      # convert from cm to m
     
+    if water_mask is not None:
+        if (water_mask.shape[0] != n_pixs) or (water_mask.shape[1] != n_pixs):
+            raise Exception(f"Either the number of x pixels in the water_mask ({water_mask.shape[1]}) "
+                            f"or the number of y pixels in the water mask ({water_mask.shape[0]}) "
+                            f"is not equal to the number of pixels in the atmsopheres ({n_pixs}).  Exiting.  ")
+        else:                            
+            water_mask_r3 = ma.repeat(water_mask[np.newaxis,], ph_turb_output.shape[0], axis = 0)
+            ph_turb_output = ma.array(ph_turb_output, mask = water_mask_r3)
     
-    water_mask_r3 = ma.repeat(water_mask[np.newaxis,], ph_turb_output.shape[0], axis = 0)
-    ph_turb_output_ma = ma.array(ph_turb_output, mask = water_mask_r3)
-    
-    return ph_turb_output_ma, Lc
+    return ph_turb_output, Lc
 
 
 #%%
 
-def coherence_mask(n_pixs, water_mask, scale=2, threshold=0.8):
+def coherence_mask(n_pixs, scale=2, threshold=0.8, verbose = False):
     """A function to synthesis a mask of incoherent pixels
     Inputs:
         n_pixs | int | output is a square of this side length
@@ -501,18 +491,21 @@ def coherence_mask(n_pixs, water_mask, scale=2, threshold=0.8):
         
     2019_03_06 | MEG | Written.  
     2020/08/10 | MEG | Update and add to SyInterferoPy.  
+    2020/08/12 | MEG | Remove need for water_mask to be passed to function.  
     """
     import numpy as np
-    print(f"Starting to generate a coherence mask... ", end = '')
+    if not verbose:
+        print(f"Starting to generate a coherence mask... ", end = '')
 
-    mask_coh_values_r3, _ = atmosphere_turb(1, water_mask, n_pixs, Lc = scale, mean_cm = 1)
+    mask_coh_values_r3, _ = atmosphere_turb(1, n_pixs, Lc = scale, mean_cm = 1)
     mask_coh_values = mask_coh_values_r3[0,]                                                                                # convert to rank 2
     mask_coh_values = (mask_coh_values - np.min(mask_coh_values)) / np.max(mask_coh_values - np.min(mask_coh_values))       # rescale to range [0, 1]
     
     
     #mask_coh_values = atmosphere_generator(n_pixs, 2, scale, verbose = False)[0]                                # always lies in range [0 1]
     mask_coh = np.where(mask_coh_values > threshold, np.ones((n_pixs, n_pixs)), np.zeros((n_pixs, n_pixs)))      # anything above the threshold is masked - sort of looks like blotchy areas of incoherence
-    print("Done. ")
+    if not verbose:
+        print("Done. ")
     return mask_coh
 
 

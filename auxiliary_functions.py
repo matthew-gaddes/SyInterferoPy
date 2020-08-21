@@ -22,7 +22,7 @@ def dem_wrapper(dem_ll_width, path_tiles, download_dems, void_fill, m_in_pix, sr
         void_fill | boolean | if true, will fill voids in dem data
         m_in_pix | float | number of metres in one pixel.  e.g. 92.6 for 3 arc second pixels.  
         srtm_dem_tools_bin | path | path to where the SRTM_tools package is located.
-        water_mask_resolution | string | sets the resolution of the mask of the water pixels.  'i' for intermediate, 'f' for fine.  Check basemap manual for other values
+        water_mask_resolution | string | sets the resolution of the mask of the water pixels.   c (crude), l (low), i (intermediate), h (high), f (full) 
         
     Returns:
         dem_ma | masked array | large dem (whole number of tiles)
@@ -81,37 +81,6 @@ def dem_wrapper(dem_ll_width, path_tiles, download_dems, void_fill, m_in_pix, sr
 
 
 #%% other less exciting functions 
-
-# def matrix_show(matrix, title='', ax = None, fig = None, db = False):
-#     """Visualise a matrix 
-#     Inputs:
-#         matrix | r2 array or masked array
-#         title | string
-#         ax | matplotlib axes
-#         db | boolean | bug fix for Spyder debugging.  If True, will allow figure to show when 
-#                         debugging
-    
-#     2017/10/18 | update so can be passed an axes and plotted in an existing figure
-#     2017/11/13 | fix bug in how colorbars are plotted.  
-#     2017/12/01 | fix bug if fig is not None
-#     """
-#     import matplotlib.pyplot as plt
-#     import numpy as np
-    
-#     if ax is None:
-#         fig, ax = plt.subplots()
-#     matrix = np.atleast_2d(matrix)                   # make at least 2d so can plot column/row vectors
-    
-#     if isinstance(matrix[0,0], np.bool_):           # boolean arrays will plot, but mess up the colourbar
-#         matrix = matrix.astype(int)                 # so convert
-    
-#     matrixPlt = ax.imshow(matrix,interpolation='none', aspect='auto')
-#     fig.colorbar(matrixPlt,ax=ax)
-#     ax.set_title(title)
-#     fig.canvas.set_window_title(title)
-#     if db:
-#         plt.pause(1)
-
 
 def griddata_plot(griddata, griddata_ll_extent, title, dem_mode = True):
     """ Plot dems quickly, using lats and lons for tick labels.  

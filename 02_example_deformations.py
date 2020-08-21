@@ -77,7 +77,7 @@ quake_ss_kwargs  = {'strike' : 0,
                     'top_depth' : 4000,
                     'bottom_depth' : 8000}
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'quake', **quake_ss_kwargs)
-griddata_plot(los_grid, ll_extent_crop, '05: SS fault earthquake', dem_mode = False)
+griddata_plot(los_grid, ll_extent_crop, '05: SS fault earthquake - is magnitude correct?', dem_mode = False)
 
 #5: Normal EQ
 quake_normal_kwargs  = {'strike' : 0,
@@ -88,7 +88,7 @@ quake_normal_kwargs  = {'strike' : 0,
                         'top_depth' : 4000,
                         'bottom_depth' : 8000}
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'quake', **quake_normal_kwargs)
-griddata_plot(los_grid, ll_extent_crop, '06: Normal fault earthquake', dem_mode = False)
+griddata_plot(los_grid, ll_extent_crop, '06: Normal fault earthquake - is magnitude correct?', dem_mode = False)
 
 
 #6: Thrust EQ
@@ -100,15 +100,10 @@ quake_thrust_kwargs = {'strike' : 0,
                        'top_depth' : 4000,
                        'bottom_depth' : 8000}
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem_crop, ll_extent_crop, deformation_ll, source = 'quake', **quake_thrust_kwargs)
-griddata_plot(los_grid, ll_extent_crop, '07: Thurst fault earthquake', dem_mode = False)        
+griddata_plot(los_grid, ll_extent_crop, '07: Thurst fault earthquake - is magnitude correct?', dem_mode = False)        
         
         
 
         
 
         
-
-
-
-
-
