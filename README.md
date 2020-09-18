@@ -9,7 +9,9 @@ If you use this software in your research, please cite the [2019 JGR:SE paper](h
 
 <h5>Installation:</h5>
 A suitable python environment can be created using the conda command:<br>
-<code>conda env create --file synthetic_interferograms.yml</code>
+<code>conda env create --file SyInterferoPy.yml</code>
+
+To synthesise topographically correlated atmospheric phase screens (APSs), DEMs are required.  These could be generated using many methods, but the SyInterferoPy functions were designed to work with the [SRTM-DEM-tools](https://github.com/matthew-gaddes/SRTM-DEM-tools) package.  All the dependencies for this package are included in the SyInterferoPy.yml file.  
 
 <br>
 
