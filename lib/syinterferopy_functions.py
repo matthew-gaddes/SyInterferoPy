@@ -14,7 +14,38 @@ Created on Wed Aug  5 15:22:56 2020
 def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None, 
                         asc_or_desc = 'asc', incidence = 23, **kwargs):
     """ A function to prepare grids of pixels and deformation sources specified in lon lat for use with 
-    deformation generating functions that work in metres.  
+    deformation generating functions that work in metres.  Note that different sources require different arguments
+    (e.g. opening makes sense for a dyke or sill, but not for a Mogi source, but volume change does for a Mogi
+     source and not for a dyke or sill).  Therefore, after setting "source" a selection of kwargs must be passed 
+    to the function.   
+    E.g. for a Mogi source:
+        mogi_kwargs = {'volume_change' : 1e6,                           
+                       'depth'         : 2000}                                                 # both in metres
+        
+    Or a dyke:
+        dyke_kwargs = {'strike' : 0,
+                       'top_depth' : 1000,
+                       'bottom_depth' : 3000,
+                       'length' : 5000,
+                       'dip' : 80,
+                       'opening' : 0.5}
+    Or a sill:
+        sill_kwargs = {'strike' : 0,
+                       'depth' : 3000,
+                       'width' : 5000,
+                       'length' : 5000,
+                       'dip' : 1,
+                       'opening' : 0.5}
+    Or an earthquake:
+        quake_ss_kwargs  = {'strike' : 0,
+                            'dip' : 80,
+                            'length' : 5000,
+                            'rake' : 0,
+                            'slip' : 1,
+                            'top_depth' : 4000,
+                            'bottom_depth' : 8000}
+    
+    deformation_eq_dyke_sill  and deformation_mogi have more information on these arguments, too.  
     
     Inputs:
         lons_mg | rank 2 array | longitudes of the bottom left corner of each pixel.  
@@ -346,7 +377,7 @@ def atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, difference 
 def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, difference = False, verbose = False,
                     interpolate_threshold = 1e4, mean_m = 0.02):
     """ A function to create synthetic turbulent atmospheres based on the 
-    methods in Lohman Simmonds (sic?) 2005.  Note that due to memory issues,
+    methods in Lohman Simons 2005.  Note that due to memory issues,
     largers ones are made by interpolateing smaller ones.  Can return atmsopheres
     for an individual acquisition, or as the difference of two (as per an 
     interferogram).  Units are in metres.  

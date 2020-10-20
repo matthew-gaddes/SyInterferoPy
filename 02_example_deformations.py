@@ -53,31 +53,31 @@ griddata_plot(los_grid, lons_mg, lats_mg, '02: Point (Mogi) source', dem_mode = 
 
 
 # 2: Dyke
-dyke_kwargs = {'strike' : 0,
-        'top_depth' : 1000,
-        'bottom_depth' : 3000,
-        'length' : 5000,
-        'dip' : 80,
-        'opening' : 0.5}
+dyke_kwargs = {'strike' : 0,                                    # in degrees
+               'top_depth' : 1000,                              # in metres
+               'bottom_depth' : 3000,
+               'length' : 5000,
+               'dip' : 80,                                      # in degrees
+               'opening' : 0.5}
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'dyke', dem, **dyke_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '03: Opening Dyke', dem_mode = False)
 
 
 #3: Sill
-sill_kwargs = {'strike' : 0,
-               'depth' : 3000,
+sill_kwargs = {'strike' : 0,                            # degrees
+               'depth' : 3000,                          # metres
                'width' : 5000,
                'length' : 5000,
-               'dip' : 1,
+               'dip' : 1,                               # degrees
                'opening' : 0.5}
 los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'sill', dem, **sill_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '04: Inflating Sill', dem_mode = False)
 
 
 #4: SS EQ
-quake_ss_kwargs  = {'strike' : 0,
+quake_ss_kwargs  = {'strike' : 0,                       # degrees
                     'dip' : 80,
-                    'length' : 5000,
+                    'length' : 5000,                        # metres
                     'rake' : 0,
                     'slip' : 1,
                     'top_depth' : 4000,
