@@ -11,16 +11,18 @@ Created on Wed Aug  5 15:22:56 2020
 
 #%%
 
-def deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source, 
+def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None, 
                         asc_or_desc = 'asc', incidence = 23, **kwargs):
     """ A function to prepare grids of pixels and deformation sources specified in lon lat for use with 
     deformation generating functions that work in metres.  
     
     Inputs:
-        dem | rank 2 masked array | The dem, with water masked.   
-        dem_ll_extent | list of tuples | [(lon lat lower left corner), (lon lat upper right corner)]
+        lons_mg | rank 2 array | longitudes of the bottom left corner of each pixel.  
+        lats_mg | rank 2 array | latitudes of the bottom left corner of each pixel.  
         deformation_ll | tuple | (lon, lat) of centre of deformation source.  
         source | string | mogi or quake or dyke or sill
+        dem | rank 2 masked array or None | The dem, with water masked.   If not supplied (None),
+                                            then an array (and not a masked array) of deformation is returned.  
         asc_or_dec | string | 'asc' or 'desc' or 'random'.  If set to 'random', 50% chance of each.  
         incidence | float | satellite incidence angle.  
         **kwargs | various parameters required for each type of source.  E.g. opening, as opposed to slip or volumne change etc.  
@@ -33,6 +35,7 @@ def deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source,
     
     History:
         2020/08/07 | MEG | Written.  
+        2020/10/09 | MEG | Update so that the DEM is optional.  
     """
     
     import numpy as np    
@@ -44,18 +47,16 @@ def deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source,
     dem_ll_extent = [(lons_mg[-1,0], lats_mg[-1,-1]), (lons_mg[1,-1], lats_mg[1,0])]                # [lon lat tuple of lower left corner, lon lat tuple of upper right corner]
     xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg, lats_mg)                                                    # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
     
-    #import ipdb; ipdb.set_trace()
-
     # 1: Make a satellite look vector.  
     if asc_or_desc == 'asc':
         heading = 192.04
     elif asc_or_desc == 'desc':
-        heading = 012.04
+        heading = 348.04
     elif asc_or_desc == 'random':
         if (-0.5+np.random.rand()) < 0.5:
             heading = 192.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are descending
         else:
-            heading = 012.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are ascending
+            heading = 348.04                                                            # Heading (azimuth) of satellite measured clockwise from North, in degrees, half are ascending
     else:
         raise Exception(f"'asc_or_desc' must be either 'asc' or 'desc' or 'random', but is currently {asc_or_desc}.  Exiting.   ")
 
@@ -84,8 +85,6 @@ def deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source,
     
     deformation_m = np.array([[deformation_xy[0,0] * pixel_spacing['x'], deformation_xy[0,1] * pixel_spacing['y']]])       # convert from number of pixels from lower left corner to number of metres from lower left corner, 1x2 array.  
     
-    import ipdb; ipdb.set_trace()
-    
     # 3: Calculate the deformation:
     if source == 'mogi':
         model_params = np.array([deformation_m[0,0], deformation_m[0,1], kwargs['depth'], kwargs['volume_change']])[:,np.newaxis]
@@ -96,13 +95,14 @@ def deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source,
         raise Exception(f"'source' can be eitehr 'mogi', 'quake', 'dyke', or 'sill', but not {source}.  Exiting.  ")
     
     # 4: convert the xyz deforamtion in movement in direction of satellite LOS (ie. upwards = positive, despite being range shortening)    
-    x_grid = np.reshape(U[0,], (dem.shape[0], dem.shape[1]))
-    y_grid = np.reshape(U[1,], (dem.shape[0], dem.shape[1]))
-    z_grid = np.reshape(U[2,], (dem.shape[0], dem.shape[1]))
+    x_grid = np.reshape(U[0,], (lons_mg.shape[0], lons_mg.shape[1]))
+    y_grid = np.reshape(U[1,], (lons_mg.shape[0], lons_mg.shape[1]))
+    z_grid = np.reshape(U[2,], (lons_mg.shape[0], lons_mg.shape[1]))
     los_grid = x_grid*los_vector[0,0] + y_grid*los_vector[1,0] + z_grid*los_vector[2,0]
-    
-    los_grid = ma.array(los_grid, mask = ma.getmask(dem))                                            # mask the water parts of the scene.  
-    
+
+    if dem is not None:
+        los_grid = ma.array(los_grid, mask = ma.getmask(dem))                                            # mask the water parts of the scene. Note that this can reduce the max  of defo_m as parts of the signal may then be masked out.  
+        
     return los_grid, x_grid, y_grid, z_grid
  
 
@@ -500,13 +500,16 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
 
 #%%
 
-def coherence_mask(lons_mg, lats_mg, Lc = 5000, threshold=0.8, verbose = False):
+def coherence_mask(lons_mg, lats_mg, Lc = 5000, threshold=0.8, interpolate_threshold = 1e4,
+                   verbose = False):
     """A function to synthesis a mask of incoherent pixels
     Inputs:
         lons_mg | rank 2 array | longitudes of the bottom left corner of each pixel.  
         lats_mg | rank 2 array | latitudes of the bottom left corner of each pixel.  
         Lc     | float | length scale of correlation, in metres.  If smaller, noise is patchier (ie lots of small masked areas), and if larger, smoother (ie a few large masked areas).  
         threshold | decimal | value at which deemed incoherent.  Bigger value = less is incoherent
+        interpolation_threshold | int | if there are more pixels than this value (ie the number of entries in lons_mg), interpolation is used to create the extra resolution (as generating spatially correlated noise is slow for large images)
+        verbose | boolean | True is information required on terminal.  
     Returns:
         mask_coh | rank 2 array | 
         
@@ -515,12 +518,13 @@ def coherence_mask(lons_mg, lats_mg, Lc = 5000, threshold=0.8, verbose = False):
     2020/08/12 | MEG | Remove need for water_mask to be passed to function.  
     2020/10/02 | MEG | Update to work with atmosphere_turb after this switched from cm to m.  
     2020/10/07 | MEG | Update to use new atmosphere_turb function
+    2020/10/19 | MEG | Add option to set pass interpolation threshold to atmosphere_turb function.  
     """
     import numpy as np
     if verbose:
         print(f"Starting to generate a coherence mask... ", end = '')
 
-    mask_coh_values_r3 = atmosphere_turb(1, lons_mg, lats_mg, Lc=Lc, mean_m = 0.01)                                      # generate a single turbulent atmosphere (though it still comes at as rank 3 with first dimension = 1)
+    mask_coh_values_r3 = atmosphere_turb(1, lons_mg, lats_mg, Lc=Lc, mean_m = 0.01, interpolate_threshold=interpolate_threshold)                                      # generate a single turbulent atmosphere (though it still comes at as rank 3 with first dimension = 1)
     mask_coh_values = mask_coh_values_r3[0,]                                                                                # convert to rank 2
     mask_coh_values = (mask_coh_values - np.min(mask_coh_values)) / np.max(mask_coh_values - np.min(mask_coh_values))       # rescale to range [0, 1]
     mask_coh = np.where(mask_coh_values > threshold, np.ones(lons_mg.shape), np.zeros(lons_mg.shape))                       # anything above the threshold is masked, creating blothcy areas of incoherence.  

@@ -47,7 +47,7 @@ ll_extent = [(lons_mg[-1,0], lats_mg[-1,0]), (lons_mg[1,-1], lats_mg[1,-1])]    
 #%% With a dem, we can now generate geocoded deformation patterns.  
 
 # 1: Mogi
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'mogi', **mogi_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'mogi', dem, **mogi_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '02: Point (Mogi) source', dem_mode = False)
 
 
@@ -59,7 +59,7 @@ dyke_kwargs = {'strike' : 0,
         'length' : 5000,
         'dip' : 80,
         'opening' : 0.5}
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'dyke', **dyke_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'dyke', dem, **dyke_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '03: Opening Dyke', dem_mode = False)
 
 
@@ -70,7 +70,7 @@ sill_kwargs = {'strike' : 0,
                'length' : 5000,
                'dip' : 1,
                'opening' : 0.5}
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'sill', **sill_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'sill', dem, **sill_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '04: Inflating Sill', dem_mode = False)
 
 
@@ -82,7 +82,7 @@ quake_ss_kwargs  = {'strike' : 0,
                     'slip' : 1,
                     'top_depth' : 4000,
                     'bottom_depth' : 8000}
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'quake', **quake_ss_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'quake', dem, **quake_ss_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '05: SS fault earthquake - is magnitude correct?', dem_mode = False)
 
 #5: Normal EQ
@@ -93,7 +93,7 @@ quake_normal_kwargs  = {'strike' : 0,
                         'slip' : 1,
                         'top_depth' : 4000,
                         'bottom_depth' : 8000}
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'quake', **quake_normal_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'quake', dem, **quake_normal_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '06: Normal fault earthquake - is magnitude correct?', dem_mode = False)
 
 
@@ -105,7 +105,7 @@ quake_thrust_kwargs = {'strike' : 0,
                        'slip' : 1,
                        'top_depth' : 4000,
                        'bottom_depth' : 8000}
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'quake', **quake_thrust_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'quake', dem, **quake_thrust_kwargs)
 griddata_plot(los_grid, lons_mg, lats_mg, '07: Thurst fault earthquake - is magnitude correct?', dem_mode = False)        
         
         

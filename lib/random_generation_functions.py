@@ -10,51 +10,55 @@ Created on Fri Sep 18 12:16:02 2020
 #%%
 
 def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, outputs = ['uuu'], intermediate_figure = False, 
-                                 coh_scale = 5000, coh_threshold = 0.7,
+                                 coh_scale = 5000, coh_threshold = 0.7, coh_interpolation_threshold = 5e3,
                                  min_deformation = 0.05, max_deformation = 0.25, snr_threshold = 2.0,
-                                 turb_aps_mean = 0.02, turb_aps_length = 5000,
+                                 turb_aps_mean = 0.02, turb_aps_length = 5000, turb_aps_interpolation_threshold = 5e3,
                                  topo_aps_mean = 56.0, topo_aps_var = 2.0):
     """
-    A function to generate n random synthetic interferograms at subaerial volcanoes in the Smithsonian database at SRTM3 resolution (ie.e. ~90m)
+    A function to generate n random synthetic interferograms at subaerial volcanoes in the Smithsonian database at SRTM3 resolution (ie.e. ~90m).  Different deformation
+    sources are supported (no deformatin, point (Mogi), sill or dyke), topographically correlated and turbulent atmopsheric phase screens (APS) are added,
+    and areas of incoherence are synthesisd.  The outputs are as rank 4 arrays with channels last (ie n_ifgs x ny x nx x 3 ), and can be in a variety of
+    styles (e.g. unwrapped across 3 channels, of unwrapped in channels 1 and 2 and the dem in 3).  The paper Gaddes et al. (in prep) details this 
+    in more detail.  
     
     General structure:
-            open_dem                    - these are required for making coastline and a topo correlated APS
-            coherence_mask              - synthesise areas of incoherence.  
-            create_random_defo_m        - create a deformation pattern from a point (Mogi) source, or opening dyke or inflating sill
-            def_and_dem_translate       - try random locations of the deformation signals and see if on land an in a coherent area.  
-            atmosphere_turb             - generate a turbulent APS
-            atmosphere_topo             - generate a topo correlated APS
-            check_def_visible           - check that signal to noise ratio (SNR) is acceptable and deformation pattern hasn't  dissapeared.  
-            combine_signals             - combine signals and return in different 3 channel formats (ie for use with AlexNet etc.  )
+            open_dem                            - these are required for making coastline and a topo correlated APS
+            coherence_mask                      - synthesise areas of incoherence.  
+                atmosphere_turb                 - generates the spatially correlated noise which is used to create areas of incoherence.  
+            create_random_defo_m                - creates the random source_kwargs (e.g. depth/opening) and checks signals are of correct magnitude
+                deformation_wrapper             - prepare grids in meters etc. and project 3D deformation to satellite LOS
+                    deformation_Mogi            - if deformation is Mogi, take source_wargs and make 3d surfaced deformation
+                    deformation_eq_dyke_sill    - if an Okada dislocation, take source_wargs and make 3d surfaced deformation
+            def_and_dem_translate               - try random locations of the deformation signals and see if on land an in a coherent area.  
+            atmosphere_turb                     - generate a turbulent APS
+            atmosphere_topo                     - generate a topo correlated APS
+            check_def_visible                   - check that signal to noise ratio (SNR) is acceptable and deformation pattern hasn't  dissapeared.  
+            combine_signals                     - combine signals and return in different 3 channel formats (ie for use with AlexNet etc.  )
     
     Inputs:
         volcanoes | list of dicts | each volcano is a dictionary in the list, and contains various keys and values.  
                                     'dem': the dem 'lons_mg' : longitude of each pixel  (ie a meshgrid) 'lats_mg' : latitude of each pixel
-                                        
         defo_sources | list | defo sources to be synthesised.  e.g. ['no_def', 'dyke', 'sill', 'mogi']
         n_ifgs | int | the number of interferogram to generate.  
         n_pix | int | Interferograms are square, with side length of this many pixels.  Note that we use SRTM3 pixels, so squares of ~90m side length.  
         intermediate_figure | boolean | If True, a figure showing the search for a viable deformatin location and SNR is shown.  
         coh_scale | float | sets spatial scale of incoherent areas
         coh_threshold | float | coherence is in range of 0-1, values above this are classed as incoherent
+        coh_interpolation_threshold | int | If n_pix is larger than this, interpolation will be used to generate the extra resolution (as the spatially correlated noise function used here is very slow for large images).  Similar to the setting turb_aps_interpolation_threshold
         min_deformation | float | Deformation must be above this size (in metres), even before checking the SNR agains the deformation and the atmosphere.  
         max_deformation | float | Deformation must be below this size (in metres), even before checking the SNR agains the deformation and the atmosphere.  
         snr_threshold | float | SNR of the deformation vs (topographically correlated APS + turbulent APS) must be above this for the signals to be considered as visible.  
         turb_aps_mean | float | mean strength of turbulent atmospheres, in metres.  Note the the atmosphere_turb funtion takes cmm, and the value provided in m is converted first
         turb_aps_length | float | Length scale of spatial correlatin, in metres. e.g. 5000m
+        turb_aps_interpolation_threshold | int | If n_pix is larger than this, interpolation will be used to generate the extra resolution (as the spatially correlated noise function used here is very slow for large images).  Similar to the setting coh_interpolation_threshold
         topo_aps_mean | float | rad/km of delay for the topographically correlated APS
         topo_aps_var | float | rad/km.  Sets the strength difference between topographically correlated APSs
     Returns:
-
-
-    History:        
-
-    
-    what are they key args?
-        a path to output to?
-        kwargs set earlier about signal strength etc?
-        outputs
-    
+        X_all | dict of masked arrays | keys are formats (e.g. uuu), then rank 4 masked array
+        Y_class | rank 2 array | class labels, n x 1 (ie not one hot encoding)
+        Y_loc | rank 2 array |  location of deformaiton, nx4 (xy location, xy width)
+    History:  
+        2020/10/19 | MEG | Written from various scripts.  
     """
     import numpy as np
     import numpy.ma as ma
@@ -64,29 +68,28 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
     from auxiliary_functions import truncate_colormap                                                             # needed to plot the DEM with nice (terrain) colours
     
     # hard coded variables:
-    count_max = 6                                                                                     # the number of times the function searches for acceptable deformation positions and SNR
+    count_max = 8                                                                                     # the number of times the function searches for acceptable deformation positions and SNR
     
     # begin to generate the data for this output file    
     succesful_generate = 0                                                                            # count how many ifgs succesful made so we can stop when we get to n_ifgs
     attempt_generate = 0                                                                              # only succesfully generated ifgs are counted above, but also useful to count all
     X_all = {}                                                                                        # the data will be stored in a dictionary, X_all
     for output in outputs:
-        X_all[output]  = ma.zeros((n_ifgs, n_pix, n_pix, 3))                                            # populate the dictionary with the required outputs and empty arrays.  
-    Y_class = np.zeros((n_ifgs,1))                                                                      # initate for labels showing type of deformation
-    Y_loc = np.zeros((n_ifgs,4))                                                                        # initate for labels showing location of deformation
+        X_all[output]  = ma.zeros((n_ifgs, n_pix, n_pix, 3))                                          # populate the dictionary with the required outputs and empty arrays.  
+    Y_class = np.zeros((n_ifgs,1))                                                                    # initate for labels showing type of deformation
+    Y_loc = np.zeros((n_ifgs,4))                                                                      # initate for labels showing location of deformation
     
     while succesful_generate < n_ifgs:
-        #volcano_n = np.random.randint(0, len(volcanoes))                                                # choose a volcano at random
-        volcano_n = 0
+        volcano_n = np.random.randint(0, len(volcanoes))                                                # choose a volcano at random
         defo_source = defo_sources[np.random.randint(0, len(defo_sources))]                             # random choice of which deformation source to use, exclude 0 as this is for no deformation class.  
         print(f"Volcano: {volcanoes[volcano_n]['name']} ", end = '')
                
         # 0: generate incoherence mask, choose dem choose if ascending or descending.  
-        dem_large = volcanoes[volcano_n]['dem']                                                                          # open a dem
-        dem_ll_extent = [(volcanoes[volcano_n]['lons_mg'][0,0],   volcanoes[volcano_n]['lats_mg'][0,0] ),                # get lon lat of lower left corner
-                         (volcanoes[volcano_n]['lons_mg'][-1,-1], volcanoes[volcano_n]['lats_mg'][-1,-1])]               # and upper right corner
-        mask_coherence = coherence_mask(volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix],                                  # generate coherence mask, but at the number of pixels required for the ouput, and not hte size of the large dem
-                                        volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix], coh_scale, coh_threshold)        # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
+        dem_large = volcanoes[volcano_n]['dem']                                                                                             # open a dem
+        dem_ll_extent = [(volcanoes[volcano_n]['lons_mg'][0,0],   volcanoes[volcano_n]['lats_mg'][0,0] ),                                   # get lon lat of lower left corner
+                         (volcanoes[volcano_n]['lons_mg'][-1,-1], volcanoes[volcano_n]['lats_mg'][-1,-1])]                                  # and upper right corner
+        mask_coherence = coherence_mask(volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],     # generate coherence mask, but at the number of pixels required for the ouput, and not hte size of the large dem
+                                        coh_scale, coh_threshold, coh_interpolation_threshold)                                              # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
         
         print(f"| Coherence mask generated ", end = '')
         if np.random.rand() < 0.5:
@@ -117,15 +120,15 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
             
         # 1: If no deformation, just generate topo. correlated and turbulent APS
         if defo_source == 'no_def':
-            defo_m = np.ones(dem_large.shape)                                                                                                         # in the no deformation case, make a deformaiton that is just zeros.  
+            viable_location = viable_snr = True                                                                                                        # in the no deformation case, these are always True
+            defo_m = np.ones(dem_large.shape)                                                                                                          # in the no deformation case, make a deformaiton that is just zeros.  
             defo_m, dem, viable_location, loc_list, masks = def_and_dem_translate(dem_large, defo_m , mask_coherence, threshold = 0.3, 
                                                                                   n_pixs=n_pix, defo_fraction = 0.8)                                   # doesn't matter if this returns false.  Note that masks is a dictionary of deformation, coherence and water, and water
             dem = ma.array(dem, mask = masks['coh_water'])                                                                                             # mask the DEM for water and incoherence
             APS_turb_m = atmosphere_turb(1, volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],            # generate a turbulent APS, but for speed not at the size of the original DEM, and instead at the correct n_pixs
-                                         Lc = turb_aps_length, mean_m = turb_aps_mean, difference = False, verbose = False)
+                                         None, turb_aps_length, False, False, turb_aps_interpolation_threshold, turb_aps_mean)
             APS_turb_m = APS_turb_m[0,]                                                                                                                 # remove the 1st dimension      
-            APS_topo_m = atmosphere_topo(dem, topo_aps_mean, topo_aps_var, difference=True)                                                             # generate a topographically correlated APS
-            print('\n')                                                                                                                                 # helps to split up and clarify terminal output.  
+            APS_topo_m = atmosphere_topo(dem, topo_aps_mean, topo_aps_var, difference=True)                                                             # generate a topographically correlated APS                                                                                                                                # helps to split up and clarify terminal output.  
             if intermediate_figure:
                 axes[0,0].imshow(np.zeros((n_pix, n_pix)))
                 axes[0,0].set_xlabel(f"No deformation")
@@ -134,8 +137,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                 axes[1,0].imshow(temp_combined)
                 axes[1,0].set_xlabel(f"[{np.round(np.min(temp_combined), 2)}, {np.round(np.max(temp_combined),2 )}] m")
                 axes[1,0].set_axis_on()
-                
-                plt.pause(1)
+                plt.pause(4)
             
         # 2: Or, if we do have deformation, generate it and topo correlated and turbulent APS    
         else:                                                                                                                    
@@ -163,8 +165,8 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                 print(f"| Viable location ", end = '')
                 viable_snr = False; count = 0                                                                       # make dem and ph_def and check that def is visible
                 while viable_snr is False and count < count_max:
-                    APS_turb_m = atmosphere_turb(1, volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],      # generate a turbulent APS, but for speed not at the size of the original DEM, and instead at the correct n_pixs
-                                                 Lc = turb_aps_length, mean_m = turb_aps_mean, difference = False, verbose = False)
+                    APS_turb_m = atmosphere_turb(1, volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],            # generate a turbulent APS, but for speed not at the size of the original DEM, and instead at the correct n_pixs
+                                         None, turb_aps_length, False, False, turb_aps_interpolation_threshold, turb_aps_mean)                    
                     APS_turb_m = APS_turb_m[0,]                                                                                                       # remove the 1st dimension      
                     APS_topo_m = atmosphere_topo(dem, topo_aps_mean, topo_aps_var, difference=True)                                                   # generate a topographically correlated APS using the DEM
                     viable_snr, snr = check_def_visible(defo_m, masks['def'], APS_topo_m, APS_turb_m, snr_threshold)                                  # check that the deformation is visible over the ph_topo and ph_trub (SNR has to be above snr_threshold)
@@ -179,22 +181,24 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                     if viable_snr == False:
                         count +=1
                 if viable_snr:
-                    print(f"| Viable SNR. \n ")
+                    print(f"| Viable SNR ", end = '')
                 else:
-                    print('| SNR is too low.  Restarting. \n')
+                    print('| SNR is too low. \n')
                 plt.pause(2)
             else:
-                print(f"| No viable location found.  Restarting.  \n")
+                print(f"| No viable location found. \n")
             
         # 3: If succesful, append to X (data) and Y (labels) arrays.                                                                                    # still in the main while loop, but out of the deformation / no deformation else statement.
         if (viable_location and viable_snr) or (defo_source == 'no_def'):
             X_all, Y_class, Y_loc, succesful = combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,
                                                                heading, dem, defo_source, defo_sources, loc_list, outputs, succesful_generate)              # we have a succesful flag as sometimes this can fail due to Nans etc.  
-            print(f"Write to X and Y file: {succesful}")
             if succesful:
                 succesful_generate += 1                                                                                                                 # updat the countery of how many ifgs have been succesfuly made
+                print(f"| Succesful write. \n")
+            else:
+                print(f"| Failed write.  \n")
         attempt_generate += 1                                                                                                                           # update the counter of how many have been made in total (successes and failures)
-
+        plt.close()
             
     return X_all, Y_class, Y_loc
 
@@ -226,6 +230,7 @@ def combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,
         succesful | boolean | True if no nans are present.  False if nans are
     History:
         2020/08/20 | MEG | Written from exisiting scripts.  
+        2020/10/19 | MEG | Fix bug that nans_present was being returned, instead of succesful (and they are generally the opposite of each other)
     """
     import numpy as np
     import numpy.ma as ma
@@ -295,7 +300,7 @@ def combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,
             else:
                 raise Exception("Error in output format.  Should only be either 'uuu', 'uud', 'rid', 'www', or 'wwd'.  Exiting.  ")
 
-    return X_all, Y_class, Y_loc, nans_present
+    return X_all, Y_class, Y_loc, succesful
 
       
     
@@ -352,18 +357,18 @@ def check_def_visible(ph_def, mask_def, ph_topo, ph_turb, snr_threshold = 2.0, d
 
 #%%
 
-def def_and_dem_translate(dem_large, defo_source, mask_coh, threshold = 0.3, n_pixs=224, defo_fraction = 0.8):
+def def_and_dem_translate(dem_large, defo_m, mask_coh, threshold = 0.3, n_pixs=224, defo_fraction = 0.8):
     """  A function to take a dem, defo source and coherence mask, randomly traslate the defo and dem, 
     then put together and check if the deformation is still visible.  
     Inputs:
         dem_large | rank 2 masked array | height x width , the dem
-        defo_source | rank 2 array | height x width, the deformation signals, projected into the satellite LOS (either ascending or descending)
+        defo_m | rank 2 array | height x width, the deformation signals, projected into the satellite LOS (either ascending or descending)
         n_pixs | int | output size in pixels.  Will be square
         threshold | decimal | e.g. if 0.2, and max abs deforamtion is 10, anything above 2 will be considered deformation.  
         defo_fraction | decimal | if this fraction of deformation is not in masked area, defo, coh mask, and water mask are deemed compatible
         
     Returns:
-        ph_defo
+        defo_m_crop
         dem
         viable
         loc_list
@@ -389,27 +394,24 @@ def def_and_dem_translate(dem_large, defo_source, mask_coh, threshold = 0.3, n_p
             n_pixs | int | side lenght of subregion.  E.g. 224 
             extend | boolean | if True, the padding described above is carried out.  
         Returns:
-            ph_defo | |
-            dem | |
-            viable | |
-            loc_list | |
-            masks | |
-            
+            r2_array_subregion ||
+            pos_xy           
         History:
             2019/03/20 | MEG | Update to also output the xy coords of where the centre of the old scene now is
             2020/08/25 | MEG | Change so that masks are bundled together into a dictionary
             2020/09/25 | MEG | 
+            2020/10/09 | MEG | Update docs
         """
         ny_r2, nx_r2 = r2_array.shape
         if extend:                                                                                  # sometimes we select to extend the image before cropping.  This only works if the edges of the signal are pretty much constant already.
             r2_array = np.pad(r2_array, int(((2*n_pixs)-ny_r2)/2), mode = 'edge')                   # pad teh edges, so our crop can go off them a bit (helps to get signals near the middle out to the edge of the cropped region)
-            x_start = np.random.randint(10, (nx_r2 - n_pixs))                                                  # random choice of where to start our crop.  10 ensures that we can't start too low (as we've extended the signal)
-            y_start = np.random.randint(10, (ny_r2 - n_pixs))                                                  # and in y direction.  
-            
-        else:                                                                                       # if we're not extending, r2_array doesn't change.  
-            x_start = np.random.randint(0, (nx_r2 - n_pixs))                                  #                   "                - x direction
-            y_start = np.random.randint(0, (ny_r2 - n_pixs))                                  # calcaulte a random crop of the dem - y direction
-            
+
+        centre_x = int(r2_array.shape[1]/2)        
+        centre_y = int(r2_array.shape[0]/2)        
+
+        x_start = np.random.randint(centre_x - (0.9*n_pixs), centre_x - (0.1*n_pixs))           # x_start always includes hte centre, as it can only go 90% of the scene width below the centre, and at max 10% of the scene width below the cente
+        y_start = np.random.randint(centre_y - (0.9*n_pixs), centre_y - (0.1*n_pixs))
+
         r2_array_subregion = r2_array[y_start:(y_start+n_pixs), x_start:(x_start+n_pixs)]           # do the crop
         x_pos = np.ceil((r2_array.shape[1]/2) - x_start)                                                     # centre of def - offset
         y_pos = np.ceil((r2_array.shape[0]/2) - y_start)                                                     # 
@@ -418,27 +420,27 @@ def def_and_dem_translate(dem_large, defo_source, mask_coh, threshold = 0.3, n_p
     
     # start the function
     dem, _ = random_crop_of_r2(dem_large, n_pixs, extend = False)                          # random crop of the dem, note that extend is False as we can't extend a DEM (as we don't know what topography is)
-    ph_defo, def_xy = random_crop_of_r2(defo_source, n_pixs, extend = True)                # random crop of the deformation, note that extend is True as deformation signal is ~0 at edges, so no trouble to interpolate it
+    defo_m_crop, def_xy = random_crop_of_r2(defo_m, n_pixs, extend = True)                 # random crop of the deformation, note that extend is True as deformation signal is ~0 at edges, so no trouble to interpolate it
     mask_water = ma.getmask(dem).astype(int)                                               # convert the boolean mask to a more useful binary mask, 0 for visible, 1 for masked.  
 
     try:
-        loc_list = localise_data(ph_defo, centre = def_xy)                                 # xy coords of deformation for localisation label (when training CNNs etc)
+        loc_list = localise_data(defo_m_crop, centre = def_xy)                                 # xy coords of deformation for localisation label (when training CNNs etc)
         viable = True
     except:
         loc_list = []                                                                       # return empty so that function can still return variable
         viable = False
             
     # determine if the deformation is visible
-    mask_def = np.where(np.abs(ph_defo) > (threshold * np.max(np.abs(ph_defo))), np.ones((n_pixs, n_pixs)), np.zeros((n_pixs, n_pixs)))     # anything below the deformation threshold is masked.  
-    mask_coh_water = np.maximum(mask_water, mask_coh)                                                                                       # combine incoherent and water areas to one mask
+    mask_def = np.where(np.abs(defo_m_crop) > (threshold * np.max(np.abs(defo_m_crop))), np.ones((n_pixs, n_pixs)), np.zeros((n_pixs, n_pixs)))     # anything below the deformation threshold is masked.  
+    mask_coh_water = np.maximum(mask_water, mask_coh)                                                                                       # combine incoherent and water areas to one mask   
     ratio_seen = 1 - ma.mean(ma.array(mask_coh_water, mask = 1-mask_def))                                                                   # create masked array of mask only visible where deforamtion is, then get mean of that area
-    #ph_defo = ma.array(ph_defo, mask = mask_coh_water)                                                                                     # mask out where we won't have radar return
+    #defo_m_crop = ma.array(defo_m_crop, mask = mask_coh_water)                                                                                     # mask out where we won't have radar return
     if ratio_seen < defo_fraction:
         viable = False                                                      # update viable is now not viable (as the deformation is not visible)
     masks = {'coh_water' : mask_coh_water,
              'water'     : mask_water,
              'def'       : mask_def}
-    return ph_defo, dem, viable, loc_list, masks
+    return defo_m_crop, dem, viable, loc_list, masks
 
 
 #%%
@@ -467,6 +469,7 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         2020/08/12 | MEG | Written
         2020/08/25 | MEG | Update from identifying sources by number to identifying by name.  
         2020/09/24 | MEG | Comment and write docs.  
+        2020/10/09 | MEG | Update bug (deformation_wrapper was returning masked arrays when it should have returned arrays)
     """
     import numpy as np
     import numpy.ma as ma
@@ -494,20 +497,19 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
                              'dip'      : np.random.randint(0,5),                                               # in degrees
                              'opening'  : 0.2 + 0.8 * np.random.rand()}                                         # in metres
         elif defo_source == 'mogi':
-            source_kwargs = {'volume_change' : 1e6,                                                             # in metres
-                             'depth'         : 2000}                                                            # in metres
-           
+            source_kwargs = {'volume_change' : 2e6 + 1e6 * np.random.rand(),                                                             # in metres
+                             'depth'         : 1000 + 3000 * np.random.rand()}                                                            # in metres
+                    
         # 1: Apply the scaling factor to the source_kwargs                                                      # (ie if we're never getting a signal of acceptable size, adjust some kwargs to increase/decrease the magnitude.  )
         adjustable_source_kwargs = ['opening', 'volume_change']
         for source_kwarg in source_kwargs:                                                                      # loop through all the settings (kwargs) for that source
             if source_kwarg in adjustable_source_kwargs:                                                        # if the one we're currently on is in the list of ones that can be adjusted
                 source_kwargs[source_kwarg] *= source_kwargs_scaling                                            # adjust it
-             
+        
         # 2:  Generate the deformation
-        defo_m, _, _, _ = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, 
-                                              defo_source, asc_or_desc,  **source_kwargs)     # create the deformation pattern, using the settings we just generated randomly.  
+        defo_m, _, _, _ = deformation_wrapper(lons_mg, lats_mg, deformation_ll, defo_source,
+                                              dem = None, asc_or_desc = asc_or_desc,  **source_kwargs)     # create the deformation pattern, using the settings we just generated randomly.  
 
-                
         # 3: Check that it is of acceptable size (ie not a tiny signal, and not a massive signal).  
         defo_magnitudes.append(np.max(np.abs(ma.compressed(defo_m))))                                                       # get the maximum absolute signal (ie we don't care if its up or down).  
         if (min_deformation_size < defo_magnitudes[-1]) and (defo_magnitudes[-1] < max_deformation_size):                   # check if it's in the range of acceptable magnitudes.  

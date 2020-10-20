@@ -72,13 +72,13 @@ signals_m = {}                                                                  
 
 ll_extent = [(lons_mg[-1,0], lats_mg[-1,0]), (lons_mg[1,-1], lats_mg[1,-1])]                # [lon lat tuple of lower left corner, lon lat tuple of upper right corner]
 
-los_grid, x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'mogi', **mogi_kwargs)
+los_grid, x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'mogi', dem, **mogi_kwargs)
 signals_m["deformation"] = ma.array(los_grid, mask = water_mask)
 griddata_plot(signals_m["deformation"], lons_mg, lats_mg, "06 Deformaiton signal", dem_mode = False)                         # plot
 
 # we can offset of the deformaiton signal (ie set a new lon lat)
 deformation_ll = (14.17, 40.88,)                                                                                                            # deformation lon lat are changed
-signals_m["deformation"], x_grid, y_grid, z_grid = deformation_wrapper(dem, lons_mg, lats_mg, deformation_ll, source = 'mogi', **mogi_kwargs)
+signals_m["deformation"], x_grid, y_grid, z_grid = deformation_wrapper(lons_mg, lats_mg, deformation_ll, 'mogi', dem, **mogi_kwargs)
 griddata_plot(signals_m["deformation"], lons_mg, lats_mg, "07 Deformaiton signal - shifted", dem_mode = False)                         # plot
 
 
