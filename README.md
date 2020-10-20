@@ -44,11 +44,11 @@ We can also generate a turbulent APS:\
 ![09_Turbulent_APS_-_just_spatially_correlated_noise](https://user-images.githubusercontent.com/10498635/89804223-c72e5300-db2b-11ea-9a66-cbe1edf83b47.png)
 
 
-Before combining the signals to make an interferogram:
+Before combining the signals to make an interferogram:\
 ![_Combined](https://user-images.githubusercontent.com/10498635/81292410-765a1a80-9063-11ea-9c9c-e02684adb437.png)
 
 
-Or set the constituent signals' temporal behaviour to make a time series:
+Or set the constituent signals' temporal behaviour to make a time series:\
 ![Synthetic_Interferograms](https://user-images.githubusercontent.com/10498635/81292573-bae5b600-9063-11ea-84cb-fc028c1eed07.png)
 
 
@@ -56,24 +56,26 @@ Or set the constituent signals' temporal behaviour to make a time series:
 Users can now generate deformation patterns for opening dykes and sills (i.e. Using Okada's results).  \
 The location of the deformation is set as a (lon,lat) tuple, as in the previous example:
 <code> deformation_ll = (14.14, 40.84,)   </code>
-And with arguments specific to the type of deformation pattern.  E.g.:\
+And with arguments specific to the type of deformation pattern.  E.g.: 
   
 <code> dyke_kwargs = {'strike' : 0,
         'top_depth' : 1000,
         'bottom_depth' : 3000,
         'length' : 5000,
         'dip' : 80,
-        'opening' : 0.5} </code> \
+        'opening' : 0.5} </code> 
+
+
+![03:_Opening_Dyke](https://user-images.githubusercontent.com/10498635/89890070-a5d07400-dbca-11ea-8c17-c3bb9a8fa35c.png)
+
         
-Or, E.g.:\
+Or, E.g.: 
 <code>sill_kwargs = {'strike' : 0,
                'depth' : 3000,
                'width' : 5000,
                'length' : 5000,
                'dip' : 1,
                'opening' : 0.5} </code>
-
-![03:_Opening_Dyke](https://user-images.githubusercontent.com/10498635/89890070-a5d07400-dbca-11ea-8c17-c3bb9a8fa35c.png)
 
 ![04:_Inflating_Sill](https://user-images.githubusercontent.com/10498635/89890071-a6690a80-dbca-11ea-9ff9-c207e9086f1c.png)
 
