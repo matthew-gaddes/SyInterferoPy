@@ -23,8 +23,8 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
                        'depth'         : 2000}                                                 # both in metres
         
     Or a dyke:
-        dyke_kwargs = {'strike' : 0,
-                       'top_depth' : 1000,
+        dyke_kwargs = {'strike' : 0,                                    # degrees
+                       'top_depth' : 1000,                              # metres.  
                        'bottom_depth' : 3000,
                        'length' : 5000,
                        'dip' : 80,

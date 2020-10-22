@@ -81,7 +81,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
     
     while succesful_generate < n_ifgs:
         volcano_n = np.random.randint(0, len(volcanoes))                                                # choose a volcano at random
-        defo_source = defo_sources[np.random.randint(0, len(defo_sources))]                             # random choice of which deformation source to use, exclude 0 as this is for no deformation class.  
+        defo_source = defo_sources[np.random.randint(0, len(defo_sources))]                             # random choice of which deformation source to use
         print(f"Volcano: {volcanoes[volcano_n]['name']} ", end = '')
                
         # 0: generate incoherence mask, choose dem choose if ascending or descending.  
