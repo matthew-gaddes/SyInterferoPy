@@ -94,6 +94,11 @@ The .gif below shows the algorithm running for several volcanoes in real time:
 
 ![SyInterferoPy_random_ifgs](https://user-images.githubusercontent.com/10498635/96578459-239cb400-12cd-11eb-85a9-30ca6cc4494a.gif)
 
+When using deep learning models, it is common to use transfer learning and therefore encounter models that have been trained for use with RGB (red-green-blue) three channel inputs (e.g. each image is of size 224x224x3).  The SyInterferoPy package includes the option to create three channel data using the "outputs" argument, and by default can create the three channel data that is described in Gaddes et al (in prep.).  The figure below shows five possible arrangments, in which the wrapped phase, unwrapped phase, DEM, real component of complex interferogram, and imaginary components of complex interferogram are combined in a variety of ways to create three channel data.  Sadly, the conclusion of the experiment in Gaddes et al. (in prep.) was that performance is degraded when using anything other than the wrapped or unwrapped phase repeated across three channels.  
+
+![Channel_format_of_data](https://user-images.githubusercontent.com/10498635/96867085-2b429100-1464-11eb-9be0-ebcb1445b900.png)
+
+
 
 <h5>Example 4: 04_turbulent_APS_example.py</h5>
 The SyInterferoPy package generates spatially correlated noise for use in either turbulent APSs and as incoherence masks.  This is done following the algorithm presented in Lohman and Simons (2005), and by setting a different length scale, different styles of signals can be created: \
