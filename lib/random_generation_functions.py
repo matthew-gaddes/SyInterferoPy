@@ -57,8 +57,10 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         X_all | dict of masked arrays | keys are formats (e.g. uuu), then rank 4 masked array
         Y_class | rank 2 array | class labels, n x 1 (ie not one hot encoding)
         Y_loc | rank 2 array |  location of deformaiton, nx4 (xy location, xy width)
+        Y_source_kwargs | list of dicts | stores the source_kwargs that were generated randomly to create each interferogram.  Also contains the source names (ie the same as Y_class, but as a string).  
     History:  
         2020/10/19 | MEG | Written from various scripts.  
+        2020/10/26 | MEG | Add funtion to record the source_kwargs.  Intended for use if these are to be the label of interest (e.g. trianing a CNN to determine strike etc.  )
     """
     import numpy as np
     import numpy.ma as ma
@@ -78,6 +80,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         X_all[output]  = ma.zeros((n_ifgs, n_pix, n_pix, 3))                                          # populate the dictionary with the required outputs and empty arrays.  
     Y_class = np.zeros((n_ifgs,1))                                                                    # initate for labels showing type of deformation
     Y_loc = np.zeros((n_ifgs,4))                                                                      # initate for labels showing location of deformation
+    Y_source_kwargs = []                                                                              # initate an empty list for storing source kwargs (parameters like opening dip etc.) 
     
     while succesful_generate < n_ifgs:
         volcano_n = np.random.randint(0, len(volcanoes))                                                # choose a volcano at random
@@ -121,6 +124,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         # 1: If no deformation, just generate topo. correlated and turbulent APS
         if defo_source == 'no_def':
             viable_location = viable_snr = True                                                                                                        # in the no deformation case, these are always True
+            source_kwargs = {'source' : 'no_def'}
             defo_m = np.ones(dem_large.shape)                                                                                                          # in the no deformation case, make a deformaiton that is just zeros.  
             defo_m, dem, viable_location, loc_list, masks = def_and_dem_translate(dem_large, defo_m , mask_coherence, threshold = 0.3, 
                                                                                   n_pixs=n_pix, defo_fraction = 0.8)                                   # doesn't matter if this returns false.  Note that masks is a dictionary of deformation, coherence and water, and water
@@ -144,9 +148,10 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
             viable_location = False; count = 0;                                                                     # prepare for while statement that will search for a viable deformation location.  
             # 2a: Try to make a deformation signal of the correct magnitude, and then place it on land.       
             while viable_location is False and count < count_max:                                                                                   # random translations of dem and deformation, but deformation must remain visible.  
-                defo_m = create_random_defo_m(dem_large, volcanoes[volcano_n]['lons_mg'], volcanoes[volcano_n]['lats_mg'],
-                                              volcanoes[volcano_n]['centre'], defo_source,                                                       #  make a deformation signal with a size within the bounds set by min and max.  
-                                              min_deformation, max_deformation, asc_or_desc)                                                     # Note that is is made at the size of the large DEM (dem_large)
+                defo_m, source_kwargs = create_random_defo_m(dem_large, volcanoes[volcano_n]['lons_mg'], volcanoes[volcano_n]['lats_mg'],
+                                                             volcanoes[volcano_n]['centre'], defo_source,                                           #  make a deformation signal with a size within the bounds set by min and max.  
+                                                             min_deformation, max_deformation, asc_or_desc)                                         # Note that is is made at the size of the large DEM (dem_large)
+                source_kwargs['source'] = defo_source                                                                                               # add name of source to dict of source_kwargs (e.g. depth/opening etc.  )
                 defo_m, dem, viable_location, loc_list, masks = def_and_dem_translate(dem_large, defo_m, mask_coherence, threshold = 0.3,           # do the random crop of the dem and the defo pattern, so reducing the size to that desired.  
                                                                                       n_pixs=n_pix, defo_fraction = 0.8)                            # and check that the majority of the deformation pattern isn't in an incoheret area, or in water.  
                 dem = ma.array(dem, mask = masks['coh_water'])                                                                                      # mask the DEM (for water and areas of incoherence)
@@ -193,6 +198,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
             X_all, Y_class, Y_loc, succesful = combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,
                                                                heading, dem, defo_source, defo_sources, loc_list, outputs, succesful_generate)              # we have a succesful flag as sometimes this can fail due to Nans etc.  
             if succesful:
+                Y_source_kwargs.append(source_kwargs)
                 succesful_generate += 1                                                                                                                 # updat the countery of how many ifgs have been succesfuly made
                 print(f"| Succesful write. \n")
             else:
@@ -200,7 +206,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         attempt_generate += 1                                                                                                                           # update the counter of how many have been made in total (successes and failures)
         plt.close()
             
-    return X_all, Y_class, Y_loc
+    return X_all, Y_class, Y_loc, Y_source_kwargs
 
 
 #%%
@@ -465,11 +471,13 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         
     Returns:
         defo_m | rank 2 masked array | displacment in satellite LOS at each location, with the same mask as the dem.  
+        source_kwargs | dict | dictionary of the source_kwargs that were generated randomly.  
     History:
         2020/08/12 | MEG | Written
         2020/08/25 | MEG | Update from identifying sources by number to identifying by name.  
         2020/09/24 | MEG | Comment and write docs.  
         2020/10/09 | MEG | Update bug (deformation_wrapper was returning masked arrays when it should have returned arrays)
+        2020/10/26 | MEG | Return source_kwargs for potential use as labels when perofming (semi)supervised learning
     """
     import numpy as np
     import numpy.ma as ma
@@ -530,7 +538,7 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         else:
             count += 1    
 
-    return defo_m
+    return defo_m, source_kwargs
             
 
 #%%

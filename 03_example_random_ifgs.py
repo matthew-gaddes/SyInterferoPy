@@ -74,7 +74,7 @@ except:
 
 #%% 2: Create the synthetic interferograms
         
-X_all, Y_class, Y_loc = create_random_synthetic_ifgs(volcano_dems2, **synthetic_ifgs_settings)
+X_all, Y_class, Y_loc, Y_source_kwargs = create_random_synthetic_ifgs(volcano_dems2, **synthetic_ifgs_settings)
 
 #%% Plot one interferogram in the different channel formats.  
 
