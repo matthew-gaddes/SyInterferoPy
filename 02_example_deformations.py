@@ -35,6 +35,13 @@ dem_settings = {"download"              : False,                                
                 "SRTM3_tiles_folder"    : './SRTM3/',                            # folder to keep SRTM3 tiles in 
                 "water_mask_resolution" : 'f'}                                   # resolution of water mask.  c (crude), l (low), i (intermediate), h (high), f (full)
 
+#%% Login details are now needed to download SRTM3 tiles:
+    
+ed_username = input(f'Please enter your USGS Earthdata username:  ')
+ed_password = input(f'Please enter your USGS Earthdata password (NB characters will be visible!   ):  ')
+
+dem_settings['ed_username'] = ed_username                                                                   # append to the dict of dem_settings so it can be passed to SRTM_dem_make quickly.  
+dem_settings['ed_password'] = ed_password
 
 
 #%%  First, make a DEM (digtal elevation model)

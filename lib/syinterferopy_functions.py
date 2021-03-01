@@ -373,26 +373,26 @@ def atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, difference 
 
 #%%
  
- 
-def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, difference = False, verbose = False,
-                    interpolate_threshold = 1e4, mean_m = 0.02):
-    """ A function to create synthetic turbulent atmospheres based on the 
-    methods in Lohman Simons 2005.  Note that due to memory issues,
-    largers ones are made by interpolateing smaller ones.  Can return atmsopheres
-    for an individual acquisition, or as the difference of two (as per an 
-    interferogram).  Units are in metres.  
+def atmosphere_turb(n_atms, lons_mg, lats_mg, method = 'fft', mean_m = 0.02,
+                    water_mask = None, difference = False, verbose = False,
+                    cov_interpolate_threshold = 1e4, cov_Lc = 2000):
+    """ A function to create synthetic turbulent atmospheres based on the  methods in Lohman Simons 2005, or using Andy Hooper and Lin Shen's fft method.  
+    Note that due to memory issues, when using the covariance (Lohman) method, largers ones are made by interpolateing smaller ones.  
+    Can return atmsopheres for an individual acquisition, or as the difference of two (as per an interferogram).  Units are in metres.  
     
     Inputs:
         n_atms | int | number of atmospheres to generate
         lons_mg | rank 2 array | longitudes of the bottom left corner of each pixel.  
         lats_mg | rank 2 array | latitudes of the bottom left corner of each pixel.  
+        method | string | 'fft' or 'cov'.  Cov for the Lohmans Simons (sp?) method, fft for Andy Hooper/Lin Shen's fft method (which is much faster).  Currently no way to set length scale using fft method.  
+        mean_m | float | average max or min value of atmospheres that are created.  e.g. if 3 atmospheres have max values of 0.02m, 0.03m, and 0.04m, their mean would be 0.03cm.  
         water_mask | rank 2 array | If supplied, this is applied to the atmospheres generated, convering them to masked arrays.  
-        Lc     | float | length scale of correlation, in metres.  If smaller, noise is patchier, and if larger, smoother.  
         difference | boolean | If difference, two atmospheres are generated and subtracted from each other to make a single atmosphere.  
         verbose | boolean | Controls info printed to screen when running.  
-        interpolate_threshold | int | if n_pixs is greater than this, images will be generated at size so that the total number of pixels doesn't exceed this.  
-                                     e.g. if set to 1e4 (10000, the default) and images are 120*120, they will be generated at 100*100 then upsampled to 120*120.  
-        mean_m | float | average max or min value of atmospheres that are created.  e.g. if 3 atmospheres have max values of 0.02m, 0.03m, and 0.04m, their mean would be 0.03cm.  
+        cov_Lc     | float | length scale of correlation, in metres.  If smaller, noise is patchier, and if larger, smoother.  
+        cov_interpolate_threshold | int | if n_pixs is greater than this, images will be generated at size so that the total number of pixels doesn't exceed this.  
+                                          e.g. if set to 1e4 (10000, the default) and images are 120*120, they will be generated at 100*100 then upsampled to 120*120.  
+        
     
     Outputs:
         ph_turb | r3 array | n_atms x n_pixs x n_pixs, UNITS ARE M.  Note that if a water_mask is provided, this is applied and a masked array is returned.  
@@ -400,8 +400,9 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
     2019/09/13 | MEG | adapted extensively from a simple script
     2020/10/02 | MEG | Change so that a water mask is optional.  
     2020/10/05 | MEG | Change so that meshgrids of the longitudes and latitudes of each pixel are used to set resolution. 
-                       Also fix a bug in how Lc is handled, so this is now in meters.  
+                       Also fix a bug in how cov_Lc is handled, so this is now in meters.  
     2020/10/06 | MEG | Add support for rectangular atmospheres, fix some bugs.  
+    2020_03_01 | MEG | Add option to use Lin Shen/Andy Hooper's fft method which is quicker than the covariance method.  
     """
     
     import numpy as np
@@ -410,12 +411,12 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
     from scipy import interpolate as scipy_interpolate
     from auxiliary_functions import lon_lat_to_ijk
     
-    def generate_correlated_noise(pixel_distances, Lc, shape):
+    def generate_correlated_noise_cov(pixel_distances, cov_Lc, shape):
         """ given a matrix of pixel distances (in meters) and a length scale for the noise (also in meters),
         generate some 2d spatially correlated noise.  
         Inputs:
             pixel_distances | rank 2 array | pixels x pixels, distance between each on in metres.  
-            Lc | float | Length scale over which the noise is correlated.  units are metres.  
+            cov_Lc | float | Length scale over which the noise is correlated.  units are metres.  
             shape | tuple | (nx, ny)  NOTE X FIRST!
         Returns:
             y_2d | rank 2 array | spatially correlated noise.  
@@ -427,7 +428,7 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
         import scipy
         nx = shape[0]
         ny = shape[1]
-        Cd = np.exp((-1 * pixel_distances)/Lc)                                     # from the matrix of distances, convert to covariances using exponential equation
+        Cd = np.exp((-1 * pixel_distances)/cov_Lc)                                     # from the matrix of distances, convert to covariances using exponential equation
         #Cd_L = np.linalg.cholesky(Cd)                                             # ie Cd = CD_L @ CD_L.T      
         Cd_L = scipy.linalg.cholesky(Cd, lower=True)                               # better error messages than the numpy version.  
         x = np.random.randn((ny*nx))                                               # Parsons 2007 syntax - x for uncorrelated noise
@@ -435,6 +436,69 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
         y_2d = np.reshape(y, (ny, nx))                                             # turn back to rank 2
         return y_2d
     
+    
+    def generate_correlated_noise_fft(nx, ny, std_long, sp):
+        """ A function to create synthetic turbulent troposphere delay using an FFT approach. 
+        The power of the turbulence is tuned by the weather model at the longer wavelengths.
+        
+        Inputs:
+            nx (int) -- width of troposphere 
+            Ny (int) -- length of troposphere 
+            std_long (float) -- standard deviation of the weather model at the longer wavelengths. Default = ?
+            sp | int | pixel spacing in km
+            
+        Outputs:
+            APS (float): 2D array, Ny * nx, units are m.
+            
+        History:
+            2020_??_?? | LS | Adapted from code by Andy Hooper.  
+            2021_03_01 | MEG | Small change to docs and inputs to work with SyInterferoPy
+        """
+        
+        import numpy as np
+        import numpy.matlib as npm
+        import math
+        
+        np.seterr(divide='ignore')
+    
+        cut_off_freq=1/50                                                   # drop wavelengths above 50 km 
+        
+        x=np.arange(0,int(nx/2))                                            # positive frequencies only
+        y=np.arange(0,int(ny/2))                                            # positive frequencies only
+        freq_x=np.divide(x,nx*sp)
+        freq_y=np.divide(y,ny*sp)
+        Y,X=npm.meshgrid(freq_x,freq_y)
+        freq=np.sqrt((X*X+Y*Y)/2)                                           # 2D positive frequencies
+        
+        log_power=np.log10(freq)*-11/3                                      # -11/3 in 2D gives -8/3 in 1D
+        ix=np.where(freq<2/3)
+        log_power[ix]=np.log10(freq[ix])*-8/3-math.log10(2/3)                 # change slope at 1.5 km (2/3 cycles per km)
+        
+        bin_power=np.power(10,log_power)
+        ix=np.where(freq<cut_off_freq)
+        bin_power[ix]=0
+        
+        APS_power=np.zeros((ny,nx))                                         # mirror positive frequencies into other quadrants
+        APS_power[0:int(ny/2), 0:int(nx/2)]=bin_power
+        # APS_power[0:int(ny/2), int(nx/2):nx]=npm.fliplr(bin_power)
+        # APS_power[int(ny/2):ny, 0:int(nx/2)]=npm.flipud(bin_power)
+        # APS_power[int(ny/2):ny, int(nx/2):nx]=npm.fliplr(npm.flipud(bin_power))
+        APS_power[0:int(ny/2), int(np.ceil(nx/2)):]=npm.fliplr(bin_power)
+        APS_power[int(np.ceil(ny/2)):, 0:int(nx/2)]=npm.flipud(bin_power)
+        APS_power[int(np.ceil(ny/2)):, int(np.ceil(nx/2)):]=npm.fliplr(npm.flipud(bin_power))
+        APS_filt=np.sqrt(APS_power)
+        
+        x=np.random.randn(ny,nx)                                            # white noise
+        y_tmp=np.fft.fft2(x)
+        y_tmp2=np.multiply(y_tmp,APS_filt)                                  # convolve with filter
+        y=np.fft.ifft2(y_tmp2)
+        APS=np.real(y)
+    
+        APS=APS/np.std(APS)*std_long                                        #  adjust the turbulence by the weather model at the longer wavelengths.
+        APS=APS*0.01                                                        # convert from cm to m
+        return APS 
+        
+
     def rescale_atmosphere(atm, atm_mean = 0.02, atm_sigma = 0.005):
         """ a function to rescale a 2d atmosphere with any scale to a mean centered
         one with a min and max value drawn from a normal distribution.  
@@ -457,17 +521,21 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
         return atm
     
     
+    # 0: Check inputs
+    if method not in ['fft', 'cov']:
+        raise Exception(f"'method' must be either 'fft' (for the fourier transform based method), "
+                        f" or 'cov' (for the covariance based method).  {method} was supplied, so exiting.  ")
+    
     #1: determine if linear interpolation is required
     ny, nx = lons_mg.shape
     n_pixs = nx * ny
     
-    
-    if n_pixs > interpolate_threshold:
+    if (n_pixs > cov_interpolate_threshold) and (method == 'cov'):
         if verbose:
-            print(f"The number of pixels is larger than 'interpolate_threshold' ({interpolate_threshold}) so images will be created "
-                  f"with {interpolate_threshold} pixels and interpolated to the full resolution.  ")
+            print(f"The number of pixels ({n_pixs}) is larger than 'cov_interpolate_threshold' ({int(cov_interpolate_threshold)}) so images will be created "
+                  f"with {int(cov_interpolate_threshold)} pixels and interpolated to the full resolution.  ")
         interpolate = True                                                                                  # set boolean flag
-        oversize_factor = n_pixs / interpolate_threshold                                                    # determine how many times too many pixels we have.  
+        oversize_factor = n_pixs / cov_interpolate_threshold                                                    # determine how many times too many pixels we have.  
         lons_ds = np.linspace(lons_mg[-1,0], lons_mg[-1,-1], int(nx * (1/np.sqrt(oversize_factor))))        # make a downsampled vector of just the longitudes (square root as number of pixels is a measure of area, and this is length)
         lats_ds = np.linspace(lats_mg[0,0], lats_mg[-1,0], int(ny * (1/np.sqrt(oversize_factor))))          # and for latitudes
         lons_mg_ds = np.repeat(lons_ds[np.newaxis, :], lats_ds.shape, axis = 0)                             # make rank 2 again
@@ -481,26 +549,29 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
         lats_mg_ds = lats_mg
     
     #2: calculate distance between points
-    ph_turb = np.zeros((n_atms, ny_generate, nx_generate))                                  # initiate output as a rank 3 (ie n_images x ny x nx)
-    xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg_ds, lats_mg_ds)                           # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
-    xy = xyz_m[0:2].T                                                                       # just get the x and y positions (ie discard z), and make lots x 2 (ie two columns)
-    pixel_distances = sp_distance.cdist(xy,xy, 'euclidean')                                 # calcaulte all pixelwise pairs - slow as (pixels x pixels)       
+    ph_turb = np.zeros((n_atms, ny_generate, nx_generate))                                                  # initiate output as a rank 3 (ie n_images x ny x nx)
+    xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg_ds, lats_mg_ds)                                           # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
+    xy = xyz_m[0:2].T                                                                                       # just get the x and y positions (ie discard z), and make lots x 2 (ie two columns)
+      
     
-    #3: generate atmospheres
-    if difference is False:                                                                                 # this just generates a single turbulent atmosphere
+    #3: generate atmospheres, using either of the two methods.  
+    if difference == True:
+        n_atms += 1                                                                                         # if differencing atmospheres, create one extra so that when differencing we are left with the correct number
+    
+    if method == 'fft':
         for i in range(n_atms):
-            ph_turb[i,:,:] = generate_correlated_noise(pixel_distances, Lc, (nx_generate,ny_generate))      # generate noise 
+            ph_turb[i,:,:] = generate_correlated_noise_fft(nx_generate, ny_generate,    std_long=1, 
+                                                           sp = 0.001 * np.mean((pixel_spacing['x'], pixel_spacing['y'])) )      # generate noise using fft method.  pixel spacing is average in x and y direction (and m converted to km) 
             if verbose:
                 print(f'Generated {i} of {n_atms} single acquisition atmospheres.  ')
-    elif difference is True:                                                                                # but we can also generate the difference between two atmospheres, as you'd see in an interferogram.  
-        for i in range(n_atms):
-            y_2d_1 = generate_correlated_noise(pixel_distances, Lc, (nx_generate,ny_generate))              # generate first noise
-            y_2d_2 = generate_correlated_noise(pixel_distances, Lc, (nx_generate,ny_generate))              # generate second noise
-            ph_turb[i,:,:] = y_2d_1 - y_2d_2                                                                # difference between the two atmospheres
-            if verbose:
-                print(f'Generated {i} of {n_atms} interferogram atmospheres.  ')
+            
     else:
-        raise Exception("'difference' must be either True or False.  Quitting.  ")
+        pixel_distances = sp_distance.cdist(xy,xy, 'euclidean')                                                     # calcaulte all pixelwise pairs - slow as (pixels x pixels)       
+        for i in range(n_atms):
+            ph_turb[i,:,:] = generate_correlated_noise_cov(pixel_distances, cov_Lc, (nx_generate,ny_generate))      # generate noise 
+            if verbose:
+                print(f'Generated {i} of {n_atms} single acquisition atmospheres.  ')
+                
 
     #3: possibly interplate to bigger size
     if interpolate:
@@ -531,16 +602,18 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, water_mask = None, Lc = 2000, diff
 
 #%%
 
-def coherence_mask(lons_mg, lats_mg, Lc = 5000, threshold=0.8, interpolate_threshold = 1e4,
-                   verbose = False):
+def coherence_mask(lons_mg, lats_mg, threshold=0.8, turb_method = 'fft',
+                   cov_Lc = 5000, cov_interpolate_threshold = 1e4, verbose = False):
     """A function to synthesis a mask of incoherent pixels
     Inputs:
         lons_mg | rank 2 array | longitudes of the bottom left corner of each pixel.  
         lats_mg | rank 2 array | latitudes of the bottom left corner of each pixel.  
-        Lc     | float | length scale of correlation, in metres.  If smaller, noise is patchier (ie lots of small masked areas), and if larger, smoother (ie a few large masked areas).  
         threshold | decimal | value at which deemed incoherent.  Bigger value = less is incoherent
-        interpolation_threshold | int | if there are more pixels than this value (ie the number of entries in lons_mg), interpolation is used to create the extra resolution (as generating spatially correlated noise is slow for large images)
+        turb_method | string | 'fft' or 'cov'.  Controls the method used to genete spatially correlated noise which is used here.  fft is normal ~100x faster.  
+        cov_Lc     | float | length scale of correlation, in metres.  If smaller, noise is patchier (ie lots of small masked areas), and if larger, smoother (ie a few large masked areas).  
+        cov_interpolation_threshold | int | if there are more pixels than this value (ie the number of entries in lons_mg), interpolation is used to create the extra resolution (as generating spatially correlated noise is slow for large images)
         verbose | boolean | True is information required on terminal.  
+        
     Returns:
         mask_coh | rank 2 array | 
         
@@ -550,12 +623,22 @@ def coherence_mask(lons_mg, lats_mg, Lc = 5000, threshold=0.8, interpolate_thres
     2020/10/02 | MEG | Update to work with atmosphere_turb after this switched from cm to m.  
     2020/10/07 | MEG | Update to use new atmosphere_turb function
     2020/10/19 | MEG | Add option to set pass interpolation threshold to atmosphere_turb function.  
+    2020/03/01 | MEG | Add option to select which method is used to generate the spatialy correlated noise.  
     """
     import numpy as np
     if verbose:
         print(f"Starting to generate a coherence mask... ", end = '')
 
-    mask_coh_values_r3 = atmosphere_turb(1, lons_mg, lats_mg, Lc=Lc, mean_m = 0.01, interpolate_threshold=interpolate_threshold)                                      # generate a single turbulent atmosphere (though it still comes at as rank 3 with first dimension = 1)
+
+    if turb_method == 'fft':
+        mask_coh_values_r3 = atmosphere_turb(1, lons_mg, lats_mg, method='fft', mean_m = 0.01)                              # generate a single turbulent atmosphere (though it still comes at as rank 3 with first dimension = 1)
+    elif turb_method == 'cov':
+        mask_coh_values_r3 = atmosphere_turb(1, lons_mg, lats_mg, mean_m = 0.01,
+                                             method='cov', cov_Lc=cov_Lc, cov_interpolate_threshold=cov_interpolate_threshold)       # generate a single turbulent atmosphere (though it still comes at as rank 3 with first dimension = 1)
+    else:
+        print(f"'turb_method' should be either 'fft' or 'cov'.  {turb_method} was supplied, so defaulting to 'fft'.  ")
+        mask_coh_values_r3 = atmosphere_turb(1, lons_mg, lats_mg, method='fft', mean_m = 0.01)                              # generate a single turbulent atmosphere (though it still comes at as rank 3 with first dimension = 1)
+        
     mask_coh_values = mask_coh_values_r3[0,]                                                                                # convert to rank 2
     mask_coh_values = (mask_coh_values - np.min(mask_coh_values)) / np.max(mask_coh_values - np.min(mask_coh_values))       # rescale to range [0, 1]
     mask_coh = np.where(mask_coh_values > threshold, np.ones(lons_mg.shape), np.zeros(lons_mg.shape))                       # anything above the threshold is masked, creating blothcy areas of incoherence.  

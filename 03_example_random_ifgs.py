@@ -29,7 +29,6 @@ synthetic_ifgs_settings = {'defo_sources'           :  ['no_def', 'dyke', 'sill'
                            'n_pix'                  : 224,                                      # number of 3 arc second pixels (~90m) in x and y direction
                            'outputs'                : ['uuu', 'uud', 'www', 'wwd', 'rid'],     # channel outputs.  uuu = unwrapped across all 3, uu
                            'intermediate_figure'    : False,                                     # if True, a figure showing the steps taken during creation of each ifg is displayed.  
-                           'coh_scale'              : 5000,                                     # The length scale of the incoherent areas, in meters.  A smaller value creates smaller patches, and a larger one creates larger pathces.  
                            'coh_threshold'          : 0.7,                                      # if 1, there are no areas of incoherence, if 0 all of ifg is incoherent.  
                            'min_deformation'        : 0.05,                                     # deformation pattern must have a signals of at least this many metres.  
                            'max_deformation'        : 0.25,                                     # deformation pattern must have a signal no bigger than this many metres.  
@@ -66,6 +65,10 @@ try:
 
 except:
     print('Failed.  Generating them from scratch, which can be slow.  ')
+    ed_username = input(f'Please enter your USGS Earthdata username:  ')                                        # needed to download SRTM3 tiles
+    ed_password = input(f'Please enter your USGS Earthdata password (NB characters will be visible!   ):  ')
+    SRTM_dem_settings['ed_username'] = ed_username                                                                   # append to the dict of dem_settings so it can be passed to SRTM_dem_make quickly.  
+    SRTM_dem_settings['ed_password'] = ed_password
     volcano_dems2 = SRTM_dem_make_batch(volcano_dems, **SRTM_dem_settings)                                  # make the DEMS
     with open(f'example_03_dems.pkl', 'wb') as f:
         pickle.dump(volcano_dems2, f)

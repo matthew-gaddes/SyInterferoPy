@@ -10,7 +10,7 @@ Created on Fri Sep 18 12:16:02 2020
 #%%
 
 def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, outputs = ['uuu'], intermediate_figure = False, 
-                                 coh_scale = 5000, coh_threshold = 0.7, coh_interpolation_threshold = 5e3,
+                                 coh_threshold = 0.7, noise_method = 'fft', cov_coh_scale = 5000,  
                                  min_deformation = 0.05, max_deformation = 0.25, snr_threshold = 2.0,
                                  turb_aps_mean = 0.02, turb_aps_length = 5000, turb_aps_interpolation_threshold = 5e3,
                                  topo_aps_mean = 56.0, topo_aps_var = 2.0):
@@ -42,9 +42,9 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         n_ifgs | int | the number of interferogram to generate.  
         n_pix | int | Interferograms are square, with side length of this many pixels.  Note that we use SRTM3 pixels, so squares of ~90m side length.  
         intermediate_figure | boolean | If True, a figure showing the search for a viable deformatin location and SNR is shown.  
-        coh_scale | float | sets spatial scale of incoherent areas
         coh_threshold | float | coherence is in range of 0-1, values above this are classed as incoherent
-        coh_interpolation_threshold | int | If n_pix is larger than this, interpolation will be used to generate the extra resolution (as the spatially correlated noise function used here is very slow for large images).  Similar to the setting turb_aps_interpolation_threshold
+        noise_method | string | fft or cov.  fft is ~x100 faster, but you can't set teh length scale.  
+        cov_coh_scale | float | sets spatial scale of incoherent areas.  Only required if 'noise_method' is cov
         min_deformation | float | Deformation must be above this size (in metres), even before checking the SNR agains the deformation and the atmosphere.  
         max_deformation | float | Deformation must be below this size (in metres), even before checking the SNR agains the deformation and the atmosphere.  
         snr_threshold | float | SNR of the deformation vs (topographically correlated APS + turbulent APS) must be above this for the signals to be considered as visible.  
@@ -71,7 +71,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
     
     # hard coded variables:
     count_max = 8                                                                                     # the number of times the function searches for acceptable deformation positions and SNR
-    
+        
     # begin to generate the data for this output file    
     succesful_generate = 0                                                                            # count how many ifgs succesful made so we can stop when we get to n_ifgs
     attempt_generate = 0                                                                              # only succesfully generated ifgs are counted above, but also useful to count all
@@ -91,8 +91,8 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         dem_large = volcanoes[volcano_n]['dem']                                                                                             # open a dem
         dem_ll_extent = [(volcanoes[volcano_n]['lons_mg'][0,0],   volcanoes[volcano_n]['lats_mg'][0,0] ),                                   # get lon lat of lower left corner
                          (volcanoes[volcano_n]['lons_mg'][-1,-1], volcanoes[volcano_n]['lats_mg'][-1,-1])]                                  # and upper right corner
-        mask_coherence = coherence_mask(volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],     # generate coherence mask, but at the number of pixels required for the ouput, and not hte size of the large dem
-                                        coh_scale, coh_threshold, coh_interpolation_threshold)                                              # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
+        mask_coherence = coherence_mask(volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix])     # generate coherence mask, but at the number of pixels required for the ouput, and not hte size of the large dem
+                                                                                                                                            # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
         
         print(f"| Coherence mask generated ", end = '')
         if np.random.rand() < 0.5:
@@ -130,7 +130,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                                                                                   n_pixs=n_pix, defo_fraction = 0.8)                                   # doesn't matter if this returns false.  Note that masks is a dictionary of deformation, coherence and water, and water
             dem = ma.array(dem, mask = masks['coh_water'])                                                                                             # mask the DEM for water and incoherence
             APS_turb_m = atmosphere_turb(1, volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],            # generate a turbulent APS, but for speed not at the size of the original DEM, and instead at the correct n_pixs
-                                         None, turb_aps_length, False, False, turb_aps_interpolation_threshold, turb_aps_mean)
+                                         mean_m = turb_aps_mean)
             APS_turb_m = APS_turb_m[0,]                                                                                                                 # remove the 1st dimension      
             APS_topo_m = atmosphere_topo(dem, topo_aps_mean, topo_aps_var, difference=True)                                                             # generate a topographically correlated APS                                                                                                                                # helps to split up and clarify terminal output.  
             if intermediate_figure:
@@ -171,7 +171,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                 viable_snr = False; count = 0                                                                       # make dem and ph_def and check that def is visible
                 while viable_snr is False and count < count_max:
                     APS_turb_m = atmosphere_turb(1, volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix],            # generate a turbulent APS, but for speed not at the size of the original DEM, and instead at the correct n_pixs
-                                         None, turb_aps_length, False, False, turb_aps_interpolation_threshold, turb_aps_mean)                    
+                                                 mean_m = turb_aps_mean)
                     APS_turb_m = APS_turb_m[0,]                                                                                                       # remove the 1st dimension      
                     APS_topo_m = atmosphere_topo(dem, topo_aps_mean, topo_aps_var, difference=True)                                                   # generate a topographically correlated APS using the DEM
                     viable_snr, snr = check_def_visible(defo_m, masks['def'], APS_topo_m, APS_turb_m, snr_threshold)                                  # check that the deformation is visible over the ph_topo and ph_trub (SNR has to be above snr_threshold)

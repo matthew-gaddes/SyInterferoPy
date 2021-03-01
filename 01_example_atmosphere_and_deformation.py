@@ -9,6 +9,7 @@ Created on Thu Aug  1 10:14:02 2019
 import numpy as np
 import numpy.ma as ma
 import sys
+import time
 from pathlib import Path
 import matplotlib.pyplot as plt
 sys.path.append('./lib/')
@@ -38,27 +39,32 @@ dem_settings = {"download"              : False,                                
 
 n_interferograms = 20                                                            # number of interferograms in the time series
 
+#%% Login details are now needed to download SRTM3 tiles:
+    
+ed_username = input(f'Please enter your USGS Earthdata username:  ')
+ed_password = input(f'Please enter your USGS Earthdata password (NB characters will be visible!   ):  ')
+
+dem_settings['ed_username'] = ed_username
+dem_settings['ed_password'] = ed_password
+
 #%%  First, let's look at making DEMS (digtal elevation models)
 
 dem, lons_mg, lats_mg = SRTM_dem_make(dem_loc_size, **dem_settings)
 griddata_plot(dem, lons_mg, lats_mg, "01 A digital elevation model (DEM) of Campi Flegrei.  ")
 
-
 #lets change "scene_centre" to look somewhere else
-dem_loc_centre = {'centre' : (14.434, 40.816),'side_length' : (20e3, 20e3)}                                 # lon lat, width, height (m), note small change to lon lat
+dem_loc_size = {'centre' : (14.434, 40.816),'side_length' : (20e3, 20e3)}                                 # lon lat, width, height (m), note small change to lon lat
 dem, lons_mg, lats_mg = SRTM_dem_make(dem_loc_size, **dem_settings)
 griddata_plot(dem, lons_mg, lats_mg,  "02 DEM for new location (Vesuvius)")
 
 # Or we can change the 'width' argument of "scene_centre" to a bigger value, and bigger scene.  
-dem_loc_centre = {'centre' : (14.43, 40.82), 'side_length' :  (40e3, 40e3)}                                 # lon lat scene width(km), note change to 40
+dem_loc_size = {'centre' : (14.43, 40.82), 'side_length' :  (40e3, 40e3)}                                 # lon lat scene width(km), note change to 40
 dem, lons_mg, lats_mg = SRTM_dem_make(dem_loc_size, **dem_settings)
 griddata_plot(dem, lons_mg, lats_mg,  "03 DEM for new location (Vesuvius), 40km scene")
 
 # and reset it to Campi Flegrei (and make a good, void filled one, which will be slow)
 dem_settings['void_fill'] = True                                                                            # turn void filling on
-
-
-dem_loc_size = {'centre'        : (14.14, 40.84), 'side_length'   : (20e3,20e3)}                # lon lat width height (m) of interferogram.  
+dem_loc_size = {'centre'        : (14.14, 40.84), 'side_length'   : (20e3,20e3)}                            # lon lat width height (m) of interferogram.  
 dem, lons_mg, lats_mg = SRTM_dem_make(dem_loc_size, **dem_settings)
 griddata_plot(dem, lons_mg, lats_mg,  "05 back to the original, 20km scene")
 
@@ -87,12 +93,22 @@ griddata_plot(signals_m["deformation"], lons_mg, lats_mg, "07 Deformaiton signal
 signals_m['topo_correlated_APS'] = atmosphere_topo(dem, strength_mean = 56.0, strength_var = 12.0, difference = True)                    # dem must be in metres
 griddata_plot(signals_m["topo_correlated_APS"], lons_mg, lats_mg, "Topographically correlated APS", dem_mode = False)                         # plot
 
-#%% Make a turbulent APS, correlated on a length scale of 5000m
-Lc = 5000
-ph_turb = atmosphere_turb(1, lons_mg, lats_mg, water_mask, Lc = Lc, verbose=True, interpolate_threshold = 5e3, mean_m = 0.02)
-signals_m["turbulent_APS"] = ph_turb[0,]
-griddata_plot(signals_m["turbulent_APS"], lons_mg, lats_mg, f"09 Turbulent APS - correlation length: {Lc}m", dem_mode = False)                         # plot
+#%% Make a turbulent APS, for which there are two methods.  
+cov_Lc = 5000                                                                                                                                   # correlation length scale for the cov method.  
 
+t1 = time.perf_counter()
+ph_turb_cov = atmosphere_turb(1, lons_mg, lats_mg, method = 'cov', water_mask = water_mask, mean_m = 0.02,
+                              cov_Lc = cov_Lc, cov_interpolate_threshold = 5e3)                                                                 # make using the slower covariance method, but a length scale (cov_Lc) can be set
+t2 = time.perf_counter()
+griddata_plot(ph_turb_cov[0,], lons_mg, lats_mg, f"09a Turbulent APS, covariance method, Time: {t2-t1:0.4f}s", dem_mode = False)                # plot
+
+t1 = time.perf_counter()
+ph_turb_fft = atmosphere_turb(1, lons_mg, lats_mg, method = 'fft', water_mask = water_mask, mean_m = 0.02)                                      # make using the faster fft method, but note that the length scale can't be set
+t2 = time.perf_counter()
+griddata_plot(ph_turb_fft[0,], lons_mg, lats_mg, f"09b Turbulent APS, fft method, Time: {t2-t1:0.4f}s", dem_mode = False)                       # plot
+
+signals_m["turbulent_APS"] = ph_turb_fft[0,]                                                                                                    # append the fft version to the list of signals for our interferogram.  
+ 
 
 #%% Combine all the signals to make an interferogram
 
@@ -110,21 +126,8 @@ plot_ifgs(signals_m_rows, water_mask, title = 'Deformation / Topo correlated APS
 
 #%% Note that we can also synthesise areas of incoherece and use these to update the mask
 
-Lcs = [500, 5000]                                                                                   # sets the length scale of the patches of incoherence, in meters
-coherence_masks = {}                                                                                # initate as empty
-for Lc in Lcs:
-    coherence_masks[Lc] = coherence_mask(lons_mg, lats_mg, Lc=Lc, threshold=0.7)                    # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
-
-
-f, axes = plt.subplots(1,2)
-f.suptitle('Example of coherence masks')
-f.canvas.set_window_title('Example of coherence masks')
-axes[0].imshow(coherence_masks[Lcs[0]])
-axes[0].set_title(f"Length scale: {Lcs[0]}")
-axes[1].imshow(coherence_masks[Lcs[1]])
-axes[1].set_title(f"Length scale: {Lcs[1]}")
-
-mask_combined = np.logical_or(water_mask, coherence_masks[Lcs[0]])
+coherence_mask = coherence_mask(lons_mg, lats_mg, threshold=0.7)                                                                # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
+mask_combined = np.logical_or(water_mask, coherence_mask)                                                                       # combine the masks for water and incoherence
 ifg_with_incoherence = ma.array(ma.getdata(signals_m["combined"]), mask = mask_combined)
 griddata_plot(ifg_with_incoherence, lons_mg, lats_mg, "10 Synthetic interferogram with incoherent regions", dem_mode = False)                         # plot
     
@@ -133,7 +136,7 @@ griddata_plot(ifg_with_incoherence, lons_mg, lats_mg, "10 Synthetic interferogra
 
 S = np.vstack((ma.compressed(signals_m["deformation"]), ma.compressed(signals_m["topo_correlated_APS"])))         # signals will be stored as row vectors 
 
-ph_turb_m  = atmosphere_turb(n_interferograms, lons_mg, lats_mg, water_mask, Lc = 2000, verbose=True, interpolate_threshold = 100, mean_m = 0.02)
+ph_turb_m  = atmosphere_turb(n_interferograms, lons_mg, lats_mg, water_mask=water_mask, mean_m = 0.02)
 N = np.zeros((n_interferograms, S.shape[1]))
 for row_n, ph_turb in enumerate(ph_turb_m):                                         # conver the noise (turbulent atmosphere) into a matrix of row vectors.  
     N[row_n,] = ma.compressed(ph_turb)
@@ -145,6 +148,10 @@ plot_ifgs(X, water_mask, title = 'Synthetic Interferograms')
 A[:,0] *= 3                                                                         # increase the strength of the first column, which controls the deformation
 X = A@S + N                                                                         # do the mixing: X = AS + N
 plot_ifgs(X, water_mask, title = 'Synthetic Interferograms: increased deformation strength')
+
+
+#%%
+
 
 
 
