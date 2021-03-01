@@ -79,9 +79,9 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
     xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg, lats_mg)                                                    # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
     
     # 1: Make a satellite look vector.  
-    if asc_or_desc == 'asc':
+    if asc_or_desc == 'desc':
         heading = 192.04
-    elif asc_or_desc == 'desc':
+    elif asc_or_desc == 'asc':
         heading = 348.04
     elif asc_or_desc == 'random':
         if (-0.5+np.random.rand()) < 0.5:
