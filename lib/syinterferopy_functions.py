@@ -79,9 +79,9 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
     xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg, lats_mg)                                                    # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
     
     # 1: Make a satellite look vector.  
-    if asc_or_desc == 'desc':
+    if asc_or_desc == 'asc':
         heading = 192.04
-    elif asc_or_desc == 'asc':
+    elif asc_or_desc == 'desc':
         heading = 348.04
     elif asc_or_desc == 'random':
         if (-0.5+np.random.rand()) < 0.5:
@@ -563,14 +563,14 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, method = 'fft', mean_m = 0.02,
             ph_turb[i,:,:] = generate_correlated_noise_fft(nx_generate, ny_generate,    std_long=1, 
                                                            sp = 0.001 * np.mean((pixel_spacing['x'], pixel_spacing['y'])) )      # generate noise using fft method.  pixel spacing is average in x and y direction (and m converted to km) 
             if verbose:
-                print(f'Generated {i} of {n_atms} single acquisition atmospheres.  ')
+                print(f'Generated {i+1} of {n_atms} single acquisition atmospheres.  ')
             
     else:
         pixel_distances = sp_distance.cdist(xy,xy, 'euclidean')                                                     # calcaulte all pixelwise pairs - slow as (pixels x pixels)       
         for i in range(n_atms):
             ph_turb[i,:,:] = generate_correlated_noise_cov(pixel_distances, cov_Lc, (nx_generate,ny_generate))      # generate noise 
             if verbose:
-                print(f'Generated {i} of {n_atms} single acquisition atmospheres.  ')
+                print(f'Generated {i+1} of {n_atms} single acquisition atmospheres.  ')
                 
 
     #3: possibly interplate to bigger size
