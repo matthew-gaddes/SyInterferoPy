@@ -67,6 +67,7 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
     History:
         2020/08/07 | MEG | Written.  
         2020/10/09 | MEG | Update so that the DEM is optional.  
+        2021_05_18 | MEG | Fix bug in number of pixels in a degree (hard coded as 1201, now calcualted from lon and lat grids)
     """
     
     import numpy as np    
@@ -75,6 +76,9 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
     
     
     # 1: deal with lons and lats, and get pixels in metres from origin at lower left.  
+    pixs2deg_x = 1 / (lons_mg[0,1] - lons_mg[0,0])                                              # the number of pixels in 1 deg of longitude
+    pixs2deg_y = 1 / (lats_mg[0,0] - lats_mg[1,0])                                              # the number of pixels in 1 deg of latitude
+    pixs2deg = np.mean([pixs2deg_x, pixs2deg_y])
     dem_ll_extent = [(lons_mg[-1,0], lats_mg[-1,-1]), (lons_mg[1,-1], lats_mg[1,0])]                # [lon lat tuple of lower left corner, lon lat tuple of upper right corner]
     xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg, lats_mg)                                                    # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
     
@@ -110,9 +114,9 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
 
 
     # 2: calculate deformation location in the new metres from lower left coordinate system.  
-    deformation_xy = ll2xy(np.asarray(dem_ll_extent[0])[np.newaxis,:], 1201,  
-                           np.asarray(deformation_ll)[np.newaxis,:])                          #1x2 array of lon lat of bottom left corner and of points of interest (the deformation lon lat), and the number of pixels in a degree
-                                                                                              # returns the pixel number of the deformation source, from the lower left corner.  
+    deformation_xy = ll2xy(np.asarray(dem_ll_extent[0])[np.newaxis,:], pixs2deg,                # lon lat of lower left coerner, number of pixels in 1 degree
+                           np.asarray(deformation_ll)[np.newaxis,:])                        # long lat of point of interext (deformation centre)
+                                                                                              
     
     deformation_m = np.array([[deformation_xy[0,0] * pixel_spacing['x'], deformation_xy[0,1] * pixel_spacing['y']]])       # convert from number of pixels from lower left corner to number of metres from lower left corner, 1x2 array.  
     
@@ -136,6 +140,7 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
         
     return los_grid, x_grid, y_grid, z_grid
  
+
 
 
 

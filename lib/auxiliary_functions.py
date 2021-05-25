@@ -161,7 +161,7 @@ def griddata_plot(griddata, lons_mg, lats_mg, title, dem_mode = True):
     ax.set_xlabel('Longitude (degs)')
     lats = lats_mg[:,0]                                                                             # get a rank 1 of the latitudes of each pixel
     ytick_pixel_n = np.linspace(0, griddata.shape[0]-1, 10).astype(int)                             # only plot every 10th? 
-    plt.yticks(ytick_pixel_n, np.round(lats[ytick_pixel_n],2)[::-1])                                # update yticks to latitudes.  Not entirely sure why ticks have to be reversed - possibly matplotlib is counting from top left and not bottom left
+    plt.yticks(ytick_pixel_n, np.round(lats[ytick_pixel_n],2)[::1])                                # update yticks to latitudes.  have removed - from before 1 to not reverse
     ax.set_ylabel('Latitude (degs)')
     
     fig1.tight_layout()    

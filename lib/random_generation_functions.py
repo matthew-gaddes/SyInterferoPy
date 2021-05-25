@@ -91,6 +91,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         dem_large = volcanoes[volcano_n]['dem']                                                                                             # open a dem
         dem_ll_extent = [(volcanoes[volcano_n]['lons_mg'][0,0],   volcanoes[volcano_n]['lats_mg'][0,0] ),                                   # get lon lat of lower left corner
                          (volcanoes[volcano_n]['lons_mg'][-1,-1], volcanoes[volcano_n]['lats_mg'][-1,-1])]                                  # and upper right corner
+        #import pdb; pdb.set_trace()
         mask_coherence = coherence_mask(volcanoes[volcano_n]['lons_mg'][:n_pix,:n_pix], volcanoes[volcano_n]['lats_mg'][:n_pix,:n_pix])     # generate coherence mask, but at the number of pixels required for the ouput, and not hte size of the large dem
                                                                                                                                             # if threshold is 0, all of the pixels are incoherent , and if 1, none are.  
         
@@ -416,7 +417,7 @@ def def_and_dem_translate(dem_large, defo_m, mask_coh, threshold = 0.3, n_pixs=2
         centre_y = int(r2_array.shape[0]/2)        
 
         x_start = np.random.randint(centre_x - (0.9*n_pixs), centre_x - (0.1*n_pixs))           # x_start always includes hte centre, as it can only go 90% of the scene width below the centre, and at max 10% of the scene width below the cente
-        y_start = np.random.randint(centre_y - (0.9*n_pixs), centre_y - (0.1*n_pixs))
+        y_start = np.random.randint(centre_y - (0.9*n_pixs), centre_y - (0.1*n_pixs))           # note that this could be done more efficiently, but it is done this way to ensure that the centre is always in the crop (as this is where a deformation signal will be in SyInteferoPy)
 
         r2_array_subregion = r2_array[y_start:(y_start+n_pixs), x_start:(x_start+n_pixs)]           # do the crop
         x_pos = np.ceil((r2_array.shape[1]/2) - x_start)                                                     # centre of def - offset
@@ -478,6 +479,7 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         2020/09/24 | MEG | Comment and write docs.  
         2020/10/09 | MEG | Update bug (deformation_wrapper was returning masked arrays when it should have returned arrays)
         2020/10/26 | MEG | Return source_kwargs for potential use as labels when perofming (semi)supervised learning
+        2021_05_06 | MEG | Add a catch incase defo_source doesn't match dyke/sill/mogi (including wrong case).  
     """
     import numpy as np
     import numpy.ma as ma
@@ -505,8 +507,10 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
                              'dip'      : np.random.randint(0,5),                                               # in degrees
                              'opening'  : 0.2 + 0.8 * np.random.rand()}                                         # in metres
         elif defo_source == 'mogi':
-            source_kwargs = {'volume_change' : 2e6 + 1e6 * np.random.rand(),                                                             # in metres
-                             'depth'         : 1000 + 3000 * np.random.rand()}                                                            # in metres
+            source_kwargs = {'volume_change' : 2e6 + 1e6 * np.random.rand(),                                    # in metres
+                             'depth'         : 1000 + 3000 * np.random.rand()}                                  # in metres
+        else:
+            raise Exception(f"defo_source should be either 'mogi', 'sill', or 'dyke', but is {defo_source}.  Exiting.")
                     
         # 1: Apply the scaling factor to the source_kwargs                                                      # (ie if we're never getting a signal of acceptable size, adjust some kwargs to increase/decrease the magnitude.  )
         adjustable_source_kwargs = ['opening', 'volume_change']
