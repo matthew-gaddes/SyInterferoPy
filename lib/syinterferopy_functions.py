@@ -82,6 +82,15 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
     dem_ll_extent = [(lons_mg[-1,0], lats_mg[-1,-1]), (lons_mg[1,-1], lats_mg[1,0])]                # [lon lat tuple of lower left corner, lon lat tuple of upper right corner]
     xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg, lats_mg)                                                    # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
     
+    
+    # import sys
+    # sys.path.append("/home/matthew/university_work/python_stuff/python_scripts")
+    # from small_plot_functions import matrix_show
+    # import matplotlib.pyplot as plt
+    # f, axes = plt.subplots(1,2)
+    # matrix_show(np.reshape(xyz_m[0,:], (lons_mg.shape[0], lons_mg.shape[1])), ax = axes[0], fig = f)
+    # matrix_show(np.reshape(xyz_m[1,:], (lons_mg.shape[0], lons_mg.shape[1])), ax = axes[1], fig = f)
+    
     # 1: Make a satellite look vector.  
     if asc_or_desc == 'asc':
         heading = 192.04
@@ -113,19 +122,25 @@ def deformation_wrapper(lons_mg, lats_mg, deformation_ll, source, dem = None,
     #               [np.cos(incidence)]])                                      # ground to satelite unit vector
 
 
+
     # 2: calculate deformation location in the new metres from lower left coordinate system.  
     deformation_xy = ll2xy(np.asarray(dem_ll_extent[0])[np.newaxis,:], pixs2deg,                # lon lat of lower left coerner, number of pixels in 1 degree
-                           np.asarray(deformation_ll)[np.newaxis,:])                        # long lat of point of interext (deformation centre)
+                           np.asarray(deformation_ll)[np.newaxis,:])                            # long lat of point of interext (deformation centre)
                                                                                               
     
     deformation_m = np.array([[deformation_xy[0,0] * pixel_spacing['x'], deformation_xy[0,1] * pixel_spacing['y']]])       # convert from number of pixels from lower left corner to number of metres from lower left corner, 1x2 array.  
     
+    
+    
+    
+    #import pdb; pdb.set_trace()
+    
     # 3: Calculate the deformation:
     if source == 'mogi':
         model_params = np.array([deformation_m[0,0], deformation_m[0,1], kwargs['depth'], kwargs['volume_change']])[:,np.newaxis]
-        U = deformation_Mogi(model_params, xyz_m, 0.25,30e9)                                                                   # 3d displacement, xyz are rows, each point is a column.  
+        U = deformation_Mogi(model_params, xyz_m, 0.25,30e9)                                                                   # U = 3d displacement, xyz are rows, each point is a column.  
     elif (source == 'quake') or (source == 'dyke') or (source == 'sill'):
-        U = deformation_eq_dyke_sill(source, (deformation_m[0,0], deformation_m[0,1]), xyz_m, **kwargs)
+        U = deformation_eq_dyke_sill(source, (deformation_m[0,0], deformation_m[0,1]), xyz_m, **kwargs)                        # U = 3d displacement, xyz are rows, each point is a column.  
     else:
         raise Exception(f"'source' can be eitehr 'mogi', 'quake', 'dyke', or 'sill', but not {source}.  Exiting.  ")
     
@@ -227,6 +242,8 @@ def deformation_eq_dyke_sill(source, source_xy_m, xyz_m, **kwargs):
             'mu'     : 2.3e10}                                                         # shear modulus (Lame parameter, units are pascals)
     v = lame['lambda'] / (2*(lame['lambda'] + lame['mu']))                             #  calculate poisson's ration
       
+    
+    
     # import matplotlib.pyplot as plt
     # both_arrays = np.hstack((np.ravel(coords), np.ravel(xyz_m)))
     # f, axes = plt.subplots(1,2)
@@ -237,13 +254,14 @@ def deformation_eq_dyke_sill(source, source_xy_m, xyz_m, **kwargs):
         slip = kwargs['slip']
         rake = kwargs['rake']
         width = kwargs['bottom_depth'] - kwargs['top_depth']
-        centroid_depth = np.mean((kwargs['bottom_depth'] - kwargs['top_depth']))
+        # centroid_depth = np.mean((kwargs['bottom_depth'] - kwargs['top_depth']))
+        centroid_depth = np.mean((kwargs['bottom_depth'], kwargs['top_depth']))
     elif source == 'dyke':                                                                               # ie dyke or sill
         opening = kwargs['opening']
         slip = 0
         rake = 0
         width = kwargs['bottom_depth'] - kwargs['top_depth']
-        centroid_depth = np.mean((kwargs['bottom_depth'] - kwargs['top_depth']))
+        centroid_depth = np.mean((kwargs['bottom_depth'], kwargs['top_depth']))
     elif source == 'sill':                                                                               # ie dyke or sill
         opening = kwargs['opening']
         slip = 0
@@ -253,15 +271,17 @@ def deformation_eq_dyke_sill(source, source_xy_m, xyz_m, **kwargs):
     else:
         raise Exception(f"'Source' must be either 'quake', 'dyke', or 'sill', but is set to {source}.  Exiting.")
         
+    
+        
     # 3:  compute deformation using Okada function
-    U = displacement_array = compute_okada_displacement(source_xy_m[0], source_xy_m[1],                    # x y location, in metres
-                                                        centroid_depth,                                    # fault_centroid_depth, guess metres?  
-                                                        np.deg2rad(kwargs['strike']),
-                                                        np.deg2rad(kwargs['dip']),
-                                                        kwargs['length'], width,                           # length and width, in metres
-                                                        np.deg2rad(rake),                                  # rake, in rads
-                                                        slip, opening,                                     # slip (if quake) or opening (if dyke or sill)
-                                                        v, xyz_m[0,], xyz_m[1,:])                          # poissons ratio, x and y coords of surface locations.
+    U = compute_okada_displacement(source_xy_m[0], source_xy_m[1],                    # x y location, in metres
+                                   centroid_depth,                                    # fault_centroid_depth, guess metres?  
+                                   np.deg2rad(kwargs['strike']),
+                                   np.deg2rad(kwargs['dip']),
+                                   kwargs['length'], width,                           # length and width, in metres
+                                   np.deg2rad(rake),                                  # rake, in rads
+                                   slip, opening,                                     # slip (if quake) or opening (if dyke or sill)
+                                   v, xyz_m[0,], xyz_m[1,:])                          # poissons ratio, x and y coords of surface locations.
        
     return U
 

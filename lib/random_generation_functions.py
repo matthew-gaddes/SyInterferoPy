@@ -149,10 +149,17 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
             viable_location = False; count = 0;                                                                     # prepare for while statement that will search for a viable deformation location.  
             # 2a: Try to make a deformation signal of the correct magnitude, and then place it on land.       
             while viable_location is False and count < count_max:                                                                                   # random translations of dem and deformation, but deformation must remain visible.  
+                # print("QUICK FIX - DEFO ALWAYS SILL")    
+                # defo_source = 'sill'
                 defo_m, source_kwargs = create_random_defo_m(dem_large, volcanoes[volcano_n]['lons_mg'], volcanoes[volcano_n]['lats_mg'],
                                                              volcanoes[volcano_n]['centre'], defo_source,                                           #  make a deformation signal with a size within the bounds set by min and max.  
                                                              min_deformation, max_deformation, asc_or_desc)                                         # Note that is is made at the size of the large DEM (dem_large)
                 source_kwargs['source'] = defo_source                                                                                               # add name of source to dict of source_kwargs (e.g. depth/opening etc.  )
+                #matrix_show(defo_m)
+                
+                
+                #### negative ones aren't being translated perhaps? 
+                
                 defo_m, dem, viable_location, loc_list, masks = def_and_dem_translate(dem_large, defo_m, mask_coherence, threshold = 0.3,           # do the random crop of the dem and the defo pattern, so reducing the size to that desired.  
                                                                                       n_pixs=n_pix, defo_fraction = 0.8)                            # and check that the majority of the deformation pattern isn't in an incoheret area, or in water.  
                 dem = ma.array(dem, mask = masks['coh_water'])                                                                                      # mask the DEM (for water and areas of incoherence)
@@ -430,6 +437,8 @@ def def_and_dem_translate(dem_large, defo_m, mask_coh, threshold = 0.3, n_pixs=2
     defo_m_crop, def_xy = random_crop_of_r2(defo_m, n_pixs, extend = True)                 # random crop of the deformation, note that extend is True as deformation signal is ~0 at edges, so no trouble to interpolate it
     mask_water = ma.getmask(dem).astype(int)                                               # convert the boolean mask to a more useful binary mask, 0 for visible, 1 for masked.  
 
+    
+
     try:
         loc_list = localise_data(defo_m_crop, centre = def_xy)                                 # xy coords of deformation for localisation label (when training CNNs etc)
         viable = True
@@ -480,10 +489,12 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         2020/10/09 | MEG | Update bug (deformation_wrapper was returning masked arrays when it should have returned arrays)
         2020/10/26 | MEG | Return source_kwargs for potential use as labels when perofming (semi)supervised learning
         2021_05_06 | MEG | Add a catch incase defo_source doesn't match dyke/sill/mogi (including wrong case).  
+        2021_06_16 | MEG | Change so that sills and mogi source can be deflation.  
     """
     import numpy as np
     import numpy.ma as ma
     from syinterferopy_functions import deformation_wrapper
+    import random
     
     deformation_magnitude_acceptable = False                                                                   # initiate
     source_kwargs_scaling = 1                                                                                  # when set to 1, the source kwargs aren't changed.  When >1, they are increased (increasing deformation signal), and the opposite for < 1
@@ -505,9 +516,11 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
                              'width'    : 2000 + 4000 * np.random.rand(),                                       # in metres
                              'length'   : 2000 + 4000 * np.random.rand(),                                       # in meters
                              'dip'      : np.random.randint(0,5),                                               # in degrees
-                             'opening'  : 0.2 + 0.8 * np.random.rand()}                                         # in metres
+                             'opening'  : random.choice([-1, 1]) * (0.2 + 0.8 * np.random.rand())}              # in metres, note can be negatiev (closing)
+                             # 'opening'  : -1 * (0.2 + 0.8 * np.random.rand())}              # in metres, note can be negatiev (closing)
+            # print(f"QUICK FIX - SILL ALWAYS DEFLATES")
         elif defo_source == 'mogi':
-            source_kwargs = {'volume_change' : 2e6 + 1e6 * np.random.rand(),                                    # in metres
+            source_kwargs = {'volume_change' : random.choice([-1, 1]) * (int(2e6 + 1e6 * np.random.rand())),    # in metres, note can be negative (deflating)
                              'depth'         : 1000 + 3000 * np.random.rand()}                                  # in metres
         else:
             raise Exception(f"defo_source should be either 'mogi', 'sill', or 'dyke', but is {defo_source}.  Exiting.")
@@ -521,11 +534,15 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         # 2:  Generate the deformation
         defo_m, _, _, _ = deformation_wrapper(lons_mg, lats_mg, deformation_ll, defo_source,
                                               dem = None, asc_or_desc = asc_or_desc,  **source_kwargs)     # create the deformation pattern, using the settings we just generated randomly.  
-
+           
         # 3: Check that it is of acceptable size (ie not a tiny signal, and not a massive signal).  
         defo_magnitudes.append(np.max(np.abs(ma.compressed(defo_m))))                                                       # get the maximum absolute signal (ie we don't care if its up or down).  
+        
         if (min_deformation_size < defo_magnitudes[-1]) and (defo_magnitudes[-1] < max_deformation_size):                   # check if it's in the range of acceptable magnitudes.  
             deformation_magnitude_acceptable = True                                                                         # if  it is, update the boolean flag to leave the while statement.  
+            # import matplotlib.pyplot as plt
+            # f, ax = plt.subplots(1)
+            # ax.imshow(defo_m)
         
         if count == count_readjust_threshold:                                                                                   # if we get to the count threshold, we look at adjusting the source_kwargs.  
             print(f"After {count} unsuccessful attempts at making a signal of the correct magnitude, the mean signal is "

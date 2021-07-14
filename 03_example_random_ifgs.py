@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import sys
-sys.path.append('/home/matthew/university_work/11_DEM_tools/SRTM-DEM-tools/')
+sys.path.append('/home/matthew/university_work/15_my_software_releases/SRTM-DEM-tools-2.0.1')                                # Available from Github: https://github.com/matthew-gaddes/SRTM-DEM-tools)
 sys.path.append('./lib/')
 
 
@@ -81,24 +81,24 @@ X_all, Y_class, Y_loc, Y_source_kwargs = create_random_synthetic_ifgs(volcano_de
 
 #%% Plot one interferogram in the different channel formats.  
 
-
-ifg_n = 3
-units = np.array([['rad', 'rad', 'rad', 'rad', 'intensity'],
-                  ['rad', 'rad', 'rad', 'rad', 'intensity'],
-                  ['rad', 'm',   'rad', 'm',    'm']])
-
-
-fig1, axes = plt.subplots(3,5, figsize = (14,7))
-fig1.subplots_adjust(hspace = 0.4, left = 0.02, right = 0.98, bottom = 0.05, top = 0.9)
-fig1.canvas.set_window_title('Channel format of data')
-fig1.suptitle('u:unwrapped      d:DEM    w:wrapped      r:real       i:imaginary')
-
-for format_n, key in enumerate(X_all):
-    axes[0, format_n].set_title(key)
-    for channel_n in range(3):
-        image = axes[channel_n, format_n].imshow(X_all[key][ifg_n,:,:,channel_n])
-        cbar = plt.colorbar(image, ax = axes[channel_n, format_n], orientation = 'horizontal', pad = 0.2 )
-        cbar.ax.set_xlabel(units[channel_n, format_n])
-        if format_n == 0:
-            axes[channel_n, format_n].set_ylabel(f'Channel {channel_n}')
-
+for ifg_n in range(X_all['uuu'].shape[0]):
+    units = np.array([['rad', 'rad', 'rad', 'rad', 'intensity'],
+                      ['rad', 'rad', 'rad', 'rad', 'intensity'],
+                      ['rad', 'm',   'rad', 'm',    'm']])
+    
+    
+    fig1, axes = plt.subplots(3,5, figsize = (14,7))
+    fig1.subplots_adjust(hspace = 0.4, left = 0.02, right = 0.98, bottom = 0.05, top = 0.9)
+    fig1.canvas.set_window_title(f'Channel format of data {ifg_n}')
+    fig1.suptitle(f"Label: {synthetic_ifgs_settings['defo_sources'][int(Y_class[ifg_n,0])]} \n"
+                  f"u:unwrapped      d:DEM    w:wrapped      r:real       i:imaginary")
+    
+    for format_n, key in enumerate(X_all):
+        axes[0, format_n].set_title(key)
+        for channel_n in range(3):
+            image = axes[channel_n, format_n].imshow(X_all[key][ifg_n,:,:,channel_n])
+            cbar = plt.colorbar(image, ax = axes[channel_n, format_n], orientation = 'horizontal', pad = 0.2 )
+            cbar.ax.set_xlabel(units[channel_n, format_n])
+            if format_n == 0:
+                axes[channel_n, format_n].set_ylabel(f'Channel {channel_n}')
+    

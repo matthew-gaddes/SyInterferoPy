@@ -25,9 +25,9 @@ def lon_lat_to_ijk(lons_mg, lats_mg):
     
     ny, nx = lons_mg.shape
     pixel_spacing = {}
-    pixel_spacing['x'] = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), (lats_mg[-1,0], lons_mg[-1,1])).meters                  # this should vary with latitude.  
-    pixel_spacing['y'] = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), (lats_mg[-2,0], lons_mg[-1,0])).meters                  # this should be constant at all latitudes.
-    
+    pixel_spacing['x'] = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), (lats_mg[-1,0], lons_mg[-1,1])).meters                  # this should vary with latitude.  Usually around 90 (metres) for SRTM3 resolution.  
+    pixel_spacing['y'] = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), (lats_mg[-2,0], lons_mg[-1,0])).meters                  # this should be constant at all latitudes.  
+   
     X, Y = np.meshgrid(pixel_spacing['x'] * np.arange(0, nx), pixel_spacing['y'] * np.arange(0,ny))                       # make a meshgrid
     Y = np.flipud(Y)                                                                                                      # change 0 y cordiante from matrix style (top left) to axes style (bottom left)
     ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                                    # pairs of coordinates of everywhere we have data   
@@ -228,6 +228,7 @@ def localise_data(r2_data, centre = None, threshold = False):
         (both positive and negative are considered)
     Inputs:
         r2_data | rank2 array | image / defomration map in m
+        centre | tuple | centre of deformation signal, appears to be in matrix notation (ie 0,0 is top left)
         threshold | float |  value above which deformation is selected.  If False, set to 20% of maximum absolute deformation
         
     2019/02/?? - Written
@@ -241,7 +242,7 @@ def localise_data(r2_data, centre = None, threshold = False):
         threshold = 0.2 * np.max(np.abs(r2_data))
 
     #(centre_x, centre_y) = ndimage.measurements.center_of_mass(np.abs(r2_data))        # doesn't seem to work well
-    
+
     if centre is None:
         centre_x = np.unravel_index(np.argmax(r2_data), r2_data.shape)[1]
         centre_y = np.unravel_index(np.argmax(r2_data), r2_data.shape)[0]
@@ -249,7 +250,7 @@ def localise_data(r2_data, centre = None, threshold = False):
         centre_x = centre[0]
         centre_y = centre[1]
     
-    def_args = np.argwhere(r2_data > threshold)                             # a matrix of the pixels that are above the threshold, first column is ys, second is xs
+    def_args = np.argwhere(np.abs(r2_data) > threshold)                             # a matrix of the pixels that have a magnitude above the threshold (ie both positive and negative deformation)
     x_start = np.min(def_args[:,1])                                         # column 1 is for xs
     x_stop = np.max(def_args[:,1])
     y_start = np.min(def_args[:,0])                                         # column 0 is for ys
