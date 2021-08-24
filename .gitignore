@@ -1,2 +1,2 @@
-lib/__pycache/*
+lib/__pycache__/*
 __pycache__/*

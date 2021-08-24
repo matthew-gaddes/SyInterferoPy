@@ -13,7 +13,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                                  coh_threshold = 0.7, noise_method = 'fft', cov_coh_scale = 5000,  
                                  min_deformation = 0.05, max_deformation = 0.25, snr_threshold = 2.0,
                                  turb_aps_mean = 0.02, turb_aps_length = 5000, turb_aps_interpolation_threshold = 5e3,
-                                 topo_aps_mean = 56.0, topo_aps_var = 2.0):
+                                 topo_aps_mean = 56.0, topo_aps_var = 2.0, deflation = False):
     """
     A function to generate n random synthetic interferograms at subaerial volcanoes in the Smithsonian database at SRTM3 resolution (ie.e. ~90m).  Different deformation
     sources are supported (no deformatin, point (Mogi), sill or dyke), topographically correlated and turbulent atmopsheric phase screens (APS) are added,
@@ -53,6 +53,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
         turb_aps_interpolation_threshold | int | If n_pix is larger than this, interpolation will be used to generate the extra resolution (as the spatially correlated noise function used here is very slow for large images).  Similar to the setting coh_interpolation_threshold
         topo_aps_mean | float | rad/km of delay for the topographically correlated APS
         topo_aps_var | float | rad/km.  Sets the strength difference between topographically correlated APSs
+        deflation | boolean | if True, the sills and Mogi sources can be deflating (closing/ negative volume change.  )
     Returns:
         X_all | dict of masked arrays | keys are formats (e.g. uuu), then rank 4 masked array
         Y_class | rank 2 array | class labels, n x 1 (ie not one hot encoding)
@@ -61,6 +62,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
     History:  
         2020/10/19 | MEG | Written from various scripts.  
         2020/10/26 | MEG | Add funtion to record the source_kwargs.  Intended for use if these are to be the label of interest (e.g. trianing a CNN to determine strike etc.  )
+        2021_08_24 | MEG | Add option to set whether deflating sills and Mogi sources are allowed.  
     """
     import numpy as np
     import numpy.ma as ma
@@ -77,7 +79,7 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
     attempt_generate = 0                                                                              # only succesfully generated ifgs are counted above, but also useful to count all
     X_all = {}                                                                                        # the data will be stored in a dictionary, X_all
     for output in outputs:
-        X_all[output]  = ma.zeros((n_ifgs, n_pix, n_pix, 3))                                          # populate the dictionary with the required outputs and empty arrays.  
+        X_all[output]  = ma.zeros((n_ifgs, n_pix, n_pix, len(output)))                                # populate the dictionary with the required outputs (as keys)  and empty arrays (as values)
     Y_class = np.zeros((n_ifgs,1))                                                                    # initate for labels showing type of deformation
     Y_loc = np.zeros((n_ifgs,4))                                                                      # initate for labels showing location of deformation
     Y_source_kwargs = []                                                                              # initate an empty list for storing source kwargs (parameters like opening dip etc.) 
@@ -153,13 +155,9 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
                 # defo_source = 'sill'
                 defo_m, source_kwargs = create_random_defo_m(dem_large, volcanoes[volcano_n]['lons_mg'], volcanoes[volcano_n]['lats_mg'],
                                                              volcanoes[volcano_n]['centre'], defo_source,                                           #  make a deformation signal with a size within the bounds set by min and max.  
-                                                             min_deformation, max_deformation, asc_or_desc)                                         # Note that is is made at the size of the large DEM (dem_large)
+                                                             min_deformation, max_deformation, asc_or_desc,                                         # Note that is is made at the size of the large DEM (dem_large)
+                                                             deflation = deflation)
                 source_kwargs['source'] = defo_source                                                                                               # add name of source to dict of source_kwargs (e.g. depth/opening etc.  )
-                #matrix_show(defo_m)
-                
-                
-                #### negative ones aren't being translated perhaps? 
-                
                 defo_m, dem, viable_location, loc_list, masks = def_and_dem_translate(dem_large, defo_m, mask_coherence, threshold = 0.3,           # do the random crop of the dem and the defo pattern, so reducing the size to that desired.  
                                                                                       n_pixs=n_pix, defo_fraction = 0.8)                            # and check that the majority of the deformation pattern isn't in an incoheret area, or in water.  
                 dem = ma.array(dem, mask = masks['coh_water'])                                                                                      # mask the DEM (for water and areas of incoherence)
@@ -203,8 +201,9 @@ def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, o
             
         # 3: If succesful, append to X (data) and Y (labels) arrays.                                                                                    # still in the main while loop, but out of the deformation / no deformation else statement.
         if (viable_location and viable_snr) or (defo_source == 'no_def'):
-            X_all, Y_class, Y_loc, succesful = combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,
-                                                               heading, dem, defo_source, defo_sources, loc_list, outputs, succesful_generate)              # we have a succesful flag as sometimes this can fail due to Nans etc.  
+            X_all, Y_class, Y_loc, succesful = combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,                                   # combine the various signals into different data forms (e.g. unwrapped or wrapped)
+                                                               heading, dem, defo_source, defo_sources, loc_list, outputs, succesful_generate)         # (we have a succesful flag as sometimes this can fail due to Nans etc.  )
+            #import pdb; pdb.set_trace()
             if succesful:
                 Y_source_kwargs.append(source_kwargs)
                 succesful_generate += 1                                                                                                                 # updat the countery of how many ifgs have been succesfuly made
@@ -311,6 +310,8 @@ def combine_signals(X_all, Y_class, Y_loc, defo_m, APS_topo_m, APS_turb_m,
                 X_all[output][succesful_generate,] = ma.concatenate((wrapped, wrapped, wrapped), axis = 3)              # www
             elif output == 'wwd':
                 X_all[output][succesful_generate,] = ma.concatenate((wrapped, wrapped, dem), axis = 3)                      #wwd
+            elif output == 'ud':
+                X_all[output][succesful_generate,] = ma.concatenate((unwrapped, dem), axis = 3)                                # uud
             else:
                 raise Exception("Error in output format.  Should only be either 'uuu', 'uud', 'rid', 'www', or 'wwd'.  Exiting.  ")
 
@@ -368,6 +369,44 @@ def check_def_visible(ph_def, mask_def, ph_topo, ph_turb, snr_threshold = 2.0, d
     return viable, snr
 
 
+#%%
+
+def random_crop_of_r2(r2_array, n_pixs=224, extend = False):
+    """  Randomly select a subregion of a rank 2 array.  If the array is quite small, we can select areas
+    of size n_pixs that go over the edge by padding the edge of the array first.  Works well with things like deformation 
+    (which is centered in the r2_array so the near 0 edges can be interpolated), but poorly with things like a dem.  
+    Inputs:
+        r2 array | rank 2 array | e.g. a dem or deformation pattern of size 324x324
+        n_pixs | int | side lenght of subregion.  E.g. 224 
+        extend | boolean | if True, the padding described above is carried out.  
+    Returns:
+        r2_array_subregion ||
+        pos_xy           
+    History:
+        2019/03/20 | MEG | Update to also output the xy coords of where the centre of the old scene now is
+        2020/08/25 | MEG | Change so that masks are bundled together into a dictionary
+        2020/09/25 | MEG | 
+        2020/10/09 | MEG | Update docs
+    """
+    import numpy as np
+    
+    ny_r2, nx_r2 = r2_array.shape
+    if extend:                                                                                  # sometimes we select to extend the image before cropping.  This only works if the edges of the signal are pretty much constant already.
+        r2_array = np.pad(r2_array, int(((3*n_pixs)-ny_r2)/2), mode = 'edge')                   # pad teh edges, so our crop can go off them a bit (helps to get signals near the middle out to the edge of the cropped region)
+
+    centre_x = int(r2_array.shape[1]/2)        
+    centre_y = int(r2_array.shape[0]/2)        
+
+    x_start = np.random.randint(centre_x - (0.9*n_pixs), centre_x - (0.1*n_pixs))           # x_start always includes hte centre, as it can only go 90% of the scene width below the centre, and at max 10% of the scene width below the cente
+    y_start = np.random.randint(centre_y - (0.9*n_pixs), centre_y - (0.1*n_pixs))           # note that this could be done more efficiently, but it is done this way to ensure that the centre is always in the crop (as this is where a deformation signal will be in SyInteferoPy)
+
+    r2_array_subregion = r2_array[y_start:(y_start+n_pixs), x_start:(x_start+n_pixs)]           # do the crop
+    x_pos = np.ceil((r2_array.shape[1]/2) - x_start)                                                     # centre of def - offset
+    y_pos = np.ceil((r2_array.shape[0]/2) - y_start)                                                     # 
+    pos_xy = (int(x_pos), int(y_pos))                                                                       # ints as we're working with pixel numbers
+    return r2_array_subregion, pos_xy
+
+
 
 #%%
 
@@ -399,45 +438,11 @@ def def_and_dem_translate(dem_large, defo_m, mask_coh, threshold = 0.3, n_pixs=2
     import numpy.ma as ma
     from auxiliary_functions import localise_data
     
-    def random_crop_of_r2(r2_array, n_pixs=224, extend = False):
-        """  Randomly select a subregion of a rank 2 array.  If the array is quite small, we can select areas
-        of size n_pixs that go over the edge by padding the edge of the array first.  Works well with things like deformation 
-        (which is centered in the r2_array so the near 0 edges can be interpolated), but poorly with things like a dem.  
-        Inputs:
-            r2 array | rank 2 array | e.g. a dem or deformation pattern of size 324x324
-            n_pixs | int | side lenght of subregion.  E.g. 224 
-            extend | boolean | if True, the padding described above is carried out.  
-        Returns:
-            r2_array_subregion ||
-            pos_xy           
-        History:
-            2019/03/20 | MEG | Update to also output the xy coords of where the centre of the old scene now is
-            2020/08/25 | MEG | Change so that masks are bundled together into a dictionary
-            2020/09/25 | MEG | 
-            2020/10/09 | MEG | Update docs
-        """
-        ny_r2, nx_r2 = r2_array.shape
-        if extend:                                                                                  # sometimes we select to extend the image before cropping.  This only works if the edges of the signal are pretty much constant already.
-            r2_array = np.pad(r2_array, int(((2*n_pixs)-ny_r2)/2), mode = 'edge')                   # pad teh edges, so our crop can go off them a bit (helps to get signals near the middle out to the edge of the cropped region)
-
-        centre_x = int(r2_array.shape[1]/2)        
-        centre_y = int(r2_array.shape[0]/2)        
-
-        x_start = np.random.randint(centre_x - (0.9*n_pixs), centre_x - (0.1*n_pixs))           # x_start always includes hte centre, as it can only go 90% of the scene width below the centre, and at max 10% of the scene width below the cente
-        y_start = np.random.randint(centre_y - (0.9*n_pixs), centre_y - (0.1*n_pixs))           # note that this could be done more efficiently, but it is done this way to ensure that the centre is always in the crop (as this is where a deformation signal will be in SyInteferoPy)
-
-        r2_array_subregion = r2_array[y_start:(y_start+n_pixs), x_start:(x_start+n_pixs)]           # do the crop
-        x_pos = np.ceil((r2_array.shape[1]/2) - x_start)                                                     # centre of def - offset
-        y_pos = np.ceil((r2_array.shape[0]/2) - y_start)                                                     # 
-        pos_xy = (int(x_pos), int(y_pos))                                                                       # ints as we're working with pixel numbers
-        return r2_array_subregion, pos_xy
     
     # start the function
     dem, _ = random_crop_of_r2(dem_large, n_pixs, extend = False)                          # random crop of the dem, note that extend is False as we can't extend a DEM (as we don't know what topography is)
     defo_m_crop, def_xy = random_crop_of_r2(defo_m, n_pixs, extend = True)                 # random crop of the deformation, note that extend is True as deformation signal is ~0 at edges, so no trouble to interpolate it
     mask_water = ma.getmask(dem).astype(int)                                               # convert the boolean mask to a more useful binary mask, 0 for visible, 1 for masked.  
-
-    
 
     try:
         loc_list = localise_data(defo_m_crop, centre = def_xy)                                 # xy coords of deformation for localisation label (when training CNNs etc)
@@ -463,7 +468,8 @@ def def_and_dem_translate(dem_large, defo_m, mask_coh, threshold = 0.3, n_pixs=2
 
 def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
                          min_deformation_size = 0.05, max_deformation_size = 0.25, 
-                         asc_or_desc = 'random', count_readjust_threshold = 20):
+                         asc_or_desc = 'random', count_readjust_threshold = 20,
+                         deflation = False):
     """ Given a dem, create a random deformation pattern of acceptable magnitude.  The DEM is only required for geocoding the deformation patterns.  
     Projected into either ascending or descending satellite LOS.  
     Note that if min and max are changed significantly bu the soure_kwargs not, the function will be not be able to make a deformation
@@ -478,6 +484,7 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         max_deformation_size | float | in metres, deformation must be at least this large.  
         asc_or_dec | string | 'asc' or 'desc' or 'random'.  If set to 'random', 50% chance of each.  
         count_readjust_threshold | float | after this many attempts at making a singal, the kwargs are adjusted by the factor above
+        deflation | boolean | if True, the sills and Mogi sources can be deflating (closing/ negative volume change.  )
         
     Returns:
         defo_m | rank 2 masked array | displacment in satellite LOS at each location, with the same mask as the dem.  
@@ -490,6 +497,7 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
         2020/10/26 | MEG | Return source_kwargs for potential use as labels when perofming (semi)supervised learning
         2021_05_06 | MEG | Add a catch incase defo_source doesn't match dyke/sill/mogi (including wrong case).  
         2021_06_16 | MEG | Change so that sills and mogi source can be deflation.  
+        021_08_24 | MEG | Add argument that controls whether deflation of sills and Mogi sources is included.  
     """
     import numpy as np
     import numpy.ma as ma
@@ -516,12 +524,15 @@ def create_random_defo_m(dem, lons_mg, lats_mg, deformation_ll, defo_source,
                              'width'    : 2000 + 4000 * np.random.rand(),                                       # in metres
                              'length'   : 2000 + 4000 * np.random.rand(),                                       # in meters
                              'dip'      : np.random.randint(0,5),                                               # in degrees
-                             'opening'  : random.choice([-1, 1]) * (0.2 + 0.8 * np.random.rand())}              # in metres, note can be negatiev (closing)
-                             # 'opening'  : -1 * (0.2 + 0.8 * np.random.rand())}              # in metres, note can be negatiev (closing)
-            # print(f"QUICK FIX - SILL ALWAYS DEFLATES")
+                             'opening'  : (0.2 + 0.8 * np.random.rand())}                                       # in metres
+            if deflation:
+                source_kwargs['opening'] *=  random.choice([-1, 1])                                             # if deflation is allowed, 50% of the time switch the sign of the volume change.  
+
         elif defo_source == 'mogi':
-            source_kwargs = {'volume_change' : random.choice([-1, 1]) * (int(2e6 + 1e6 * np.random.rand())),    # in metres, note can be negative (deflating)
+            source_kwargs = {'volume_change' : (int(2e6 + 1e6 * np.random.rand())),                             # in metres, always positive
                              'depth'         : 1000 + 3000 * np.random.rand()}                                  # in metres
+            if deflation:
+                source_kwargs['volume_change'] *=  random.choice([-1, 1])                                       # if deflation is allowed, 50% of the time switch the sign of the volume change.  
         else:
             raise Exception(f"defo_source should be either 'mogi', 'sill', or 'dyke', but is {defo_source}.  Exiting.")
                     
