@@ -14,9 +14,10 @@ of the size of the pixels.
 import numpy as np    
 import matplotlib.pyplot as plt
 import sys
-sys.path.append('./lib/')
 
-from syinterferopy_functions import atmosphere_turb
+
+import syinterferopy
+from syinterferopy.syinterferopy import atmosphere_turb
 
 #%% Things to set
 

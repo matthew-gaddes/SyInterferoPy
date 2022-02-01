@@ -8,21 +8,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import sys
-sys.path.append('/home/matthew/university_work/15_my_software_releases/SRTM-DEM-tools-2.0.1')                                # Available from Github: https://github.com/matthew-gaddes/SRTM-DEM-tools)
-sys.path.append('./lib/')
+from pathlib import Path
+
+import syinterferopy
+from syinterferopy.random_generation import create_random_synthetic_ifgs
 
 
 
-from dem_tools_lib import SRTM_dem_make_batch
-from random_generation_functions import create_random_synthetic_ifgs
 
 #%% 0: Things to set
 
+srtm_tools_dir = Path('/home/matthew/university_work/15_my_software_releases/SRTM-DEM-tools-3.0.0')             # SRTM-DEM-tools will be needed for this example.  It can be downloaded from https://github.com/matthew-gaddes/SRTM-DEM-tools
+gshhs_dir = Path("/home/matthew/university_work/data/coastlines/gshhg/shapefile/GSHHS_shp")                    # coastline information, available from: http://www.soest.hawaii.edu/pwessel/gshhg/
+
 SRTM_dem_settings = {'SRTM1_or3'                : 'SRTM3',                                      # 1 arc second (SRTM1) is not yet supported.  
                      'water_mask_resolution'    : 'f',                                          # 'c', 'i', 'h' or 'f' (lowest to highest resolution, highest can be very slow)
-                     'SRTM3_tiles_folder'       : './SRTM3/',                                   # folder for DEM tiles.  
+                     'SRTM3_tiles_folder'       : Path('./SRTM3/'),                                   # folder for DEM tiles.  
                      'download'                 : True,                                         # If tile is not available locally, try to download it
-                     'void_fill'                : True}                                         # some tiles contain voids which can be filled (slow)
+                     'void_fill'                : True,                                         # some tiles contain voids which can be filled (slow)
+                     'gshhs_dir'                : gshhs_dir}                            # srmt-dem-tools needs access to data about coastlines
 
 synthetic_ifgs_settings = {'defo_sources'           :  ['no_def', 'dyke', 'sill', 'mogi'],      # deformation patterns that will be included in the dataset.  
                            'n_ifgs'                 : 7,                                        # the number of synthetic interferograms to generate
@@ -51,6 +55,11 @@ volcano_dems = [{'name': 'Vulsini',                 'centre': (11.93, 42.6),    
                 
 
 
+#%% Import srtm_dem_tools
+
+sys.path.append(str(srtm_tools_dir))                         # 
+import srtm_dem_tools
+from srtm_dem_tools.constructing import SRTM_dem_make_batch
 
 #%% 1: Create a list of locations (in this case subaerial volcanoes) to make interferograms for, and make them.  
 
@@ -89,7 +98,7 @@ for ifg_n in range(X_all['uuu'].shape[0]):
     
     fig1, axes = plt.subplots(3,5, figsize = (14,7))
     fig1.subplots_adjust(hspace = 0.4, left = 0.02, right = 0.98, bottom = 0.05, top = 0.9)
-    fig1.canvas.set_window_title(f'Channel format of data {ifg_n}')
+    fig1.canvas.manager.set_window_title(f'Channel format of data {ifg_n}')
     fig1.suptitle(f"Label: {synthetic_ifgs_settings['defo_sources'][int(Y_class[ifg_n,0])]} \n"
                   f"u:unwrapped      d:DEM    w:wrapped      r:real       i:imaginary")
     

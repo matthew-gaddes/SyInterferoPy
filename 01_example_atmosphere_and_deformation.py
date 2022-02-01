@@ -12,18 +12,19 @@ import sys
 import time
 from pathlib import Path
 import matplotlib.pyplot as plt
-sys.path.append('./lib/')
 
-from syinterferopy_functions import atmosphere_topo, atmosphere_turb, deformation_wrapper, coherence_mask
-from auxiliary_functions import col_to_ma, griddata_plot, plot_ifgs                        
+
+import syinterferopy
+from syinterferopy.syinterferopy import atmosphere_topo, atmosphere_turb, deformation_wrapper, coherence_mask
+from syinterferopy.aux import col_to_ma, griddata_plot, plot_ifgs                        
 
 
 
 #%% ################################ Things to set ################################
 np.random.seed(0)
 
-sys.path.append(str(Path('/home/matthew/university_work/11_DEM_tools/SRTM-DEM-tools/')))                         # SRTM-DEM-tools will be needed for this example.  It can be downloaded from https://github.com/matthew-gaddes/SRTM-DEM-tools
-from dem_tools_lib import SRTM_dem_make
+srtm_tools_dir = Path('/home/matthew/university_work/15_my_software_releases/SRTM-DEM-tools-3.0.0')             # SRTM-DEM-tools will be needed for this example.  It can be downloaded from https://github.com/matthew-gaddes/SRTM-DEM-tools
+gshhs_dir = Path("/home/matthew/university_work/data/coastlines/gshhg/shapefile/GSHHS_shp")                    # coastline information, available from: http://www.soest.hawaii.edu/pwessel/gshhg/
 
 ## Campi Flegrei
 dem_loc_size = {'centre'        : (14.14, 40.84),
@@ -34,10 +35,17 @@ mogi_kwargs = {'volume_change' : 1e6,
 
 dem_settings = {"download"              : False,                                 # if don't need to download anymore, faster to set to false
                 "void_fill"             : False,                                 # Best to leave as False here, dems can have voids, which it can be worth filling (but can be slow and requires scipy)
-                "SRTM3_tiles_folder"    : './SRTM3/',                            # folder to keep SRTM3 tiles in 
-                "water_mask_resolution" : 'f'}                                   # resolution of water mask.  c (crude), l (low), i (intermediate), h (high), f (full)
+                "SRTM3_tiles_folder"    : Path('./SRTM3/'),                            # folder to keep SRTM3 tiles in 
+                "water_mask_resolution" : 'f',                                   # resolution of water mask.  c (crude), l (low), i (intermediate), h (high), f (full)
+                'gshhs_dir'             : gshhs_dir}                            # srmt-dem-tools needs access to data about coastlines
 
 n_interferograms = 20                                                            # number of interferograms in the time series
+
+#%% Import srtm_dem_tools
+
+sys.path.append(str(srtm_tools_dir))                         # 
+import srtm_dem_tools
+from srtm_dem_tools.constructing import SRTM_dem_make
 
 #%% Login details are now needed to download SRTM3 tiles:
     
@@ -51,6 +59,8 @@ dem_settings['ed_password'] = ed_password
 
 dem, lons_mg, lats_mg = SRTM_dem_make(dem_loc_size, **dem_settings)
 griddata_plot(dem, lons_mg, lats_mg, "01 A digital elevation model (DEM) of Campi Flegrei.  ")
+
+
 
 #lets change "scene_centre" to look somewhere else
 dem_loc_size = {'centre' : (14.434, 40.816),'side_length' : (20e3, 20e3)}                                 # lon lat, width, height (m), note small change to lon lat
