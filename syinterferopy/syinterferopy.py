@@ -420,7 +420,7 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, method = 'fft', mean_m = 0.02,
         
     
     Outputs:
-        ph_turb | r3 array | n_atms x n_pixs x n_pixs, UNITS ARE M.  Note that if a water_mask is provided, this is applied and a masked array is returned.  
+        ph_turbs | r3 array | n_atms x n_pixs x n_pixs, UNITS ARE M.  Note that if a water_mask is provided, this is applied and a masked array is returned.  
         
     2019/09/13 | MEG | adapted extensively from a simple script
     2020/10/02 | MEG | Change so that a water mask is optional.  
@@ -454,8 +454,8 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, method = 'fft', mean_m = 0.02,
         nx = shape[0]
         ny = shape[1]
         Cd = np.exp((-1 * pixel_distances)/cov_Lc)                                     # from the matrix of distances, convert to covariances using exponential equation
-        #Cd_L = np.linalg.cholesky(Cd)                                             # ie Cd = CD_L @ CD_L.T      
-        Cd_L = scipy.linalg.cholesky(Cd, lower=True)                               # better error messages than the numpy version.  
+        Cd_L = np.linalg.cholesky(Cd)                                             # ie Cd = CD_L @ CD_L.T      Worse error messages, so best called in a try/except form.  
+        #Cd_L = scipy.linalg.cholesky(Cd, lower=True)                               # better error messages than the numpy versio, but can cause crashes on some machines
         x = np.random.randn((ny*nx))                                               # Parsons 2007 syntax - x for uncorrelated noise
         y = Cd_L @ x                                                               # y for correlated noise
         y_2d = np.reshape(y, (ny, nx))                                             # turn back to rank 2
@@ -574,7 +574,7 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, method = 'fft', mean_m = 0.02,
         lats_mg_ds = lats_mg
     
     #2: calculate distance between points
-    ph_turb = np.zeros((n_atms, ny_generate, nx_generate))                                                  # initiate output as a rank 3 (ie n_images x ny x nx)
+    ph_turbs = np.zeros((n_atms, ny_generate, nx_generate))                                                  # initiate output as a rank 3 (ie n_images x ny x nx)
     xyz_m, pixel_spacing = lon_lat_to_ijk(lons_mg_ds, lats_mg_ds)                                           # get pixel positions in metres from origin in lower left corner (and also their size in x and y direction)
     xy = xyz_m[0:2].T                                                                                       # just get the x and y positions (ie discard z), and make lots x 2 (ie two columns)
       
@@ -585,45 +585,83 @@ def atmosphere_turb(n_atms, lons_mg, lats_mg, method = 'fft', mean_m = 0.02,
     
     if method == 'fft':
         for i in range(n_atms):
-            ph_turb[i,:,:] = generate_correlated_noise_fft(nx_generate, ny_generate,    std_long=1, 
+            ph_turbs[i,:,:] = generate_correlated_noise_fft(nx_generate, ny_generate,    std_long=1, 
                                                            sp = 0.001 * np.mean((pixel_spacing['x'], pixel_spacing['y'])) )      # generate noise using fft method.  pixel spacing is average in x and y direction (and m converted to km) 
             if verbose:
                 print(f'Generated {i+1} of {n_atms} single acquisition atmospheres.  ')
             
     else:
         pixel_distances = sp_distance.cdist(xy,xy, 'euclidean')                                                     # calcaulte all pixelwise pairs - slow as (pixels x pixels)       
-        for i in range(n_atms):
-            ph_turb[i,:,:] = generate_correlated_noise_cov(pixel_distances, cov_Lc, (nx_generate,ny_generate))      # generate noise 
-            if verbose:
-                print(f'Generated {i+1} of {n_atms} single acquisition atmospheres.  ')
+        Cd = np.exp((-1 * pixel_distances)/cov_Lc)                                     # from the matrix of distances, convert to covariances using exponential equation
+        success = False
+        while not success:
+            try:
+                Cd_L = np.linalg.cholesky(Cd)                                             # ie Cd = CD_L @ CD_L.T      Worse error messages, so best called in a try/except form.  
+                #Cd_L = scipy.linalg.cholesky(Cd, lower=True)                               # better error messages than the numpy versio, but can cause crashes on some machines
+                success = True
+            except:
+                success = False
+        for n_atm in range(n_atms):
+            x = np.random.randn((ny_generate*nx_generate))                                               # Parsons 2007 syntax - x for uncorrelated noise
+            y = Cd_L @ x                                                               # y for correlated noise
+            ph_turb = np.reshape(y, (ny_generate, nx_generate))                                             # turn back to rank 2
+            ph_turbs[n_atm,:,:] = ph_turb
+            print(f'Generated {n_atm} of {n_atms} single acquisition atmospheres.  ')
+        
+        
+        # nx = shape[0]
+        # ny = shape[1]
+
+        
+
+        # return y_2d
+        
+        # success = 0
+        # fail = 0
+        # while success < n_atms:
+        # #for i in range(n_atms):
+        #     try:
+        #         ph_turb = generate_correlated_noise_cov(pixel_distances, cov_Lc, (nx_generate,ny_generate))      # generate noise 
+        #         ph_turbs[success,:,:] = ph_turb
+        #         success += 1
+        #         if verbose:
+        #             print(f'Generated {success} of {n_atms} single acquisition atmospheres (with {fail} failures).  ')
+        #     except:
+        #         fail += 0
+        #         if verbose:
+        #             print(f"'generate_correlated_noise_cov' failed, which is usually due to errors in the cholesky decomposition that Numpy is performing.  The odd failure is normal.  ")
+                
+        #     # ph_turbs[i,:,:] = generate_correlated_noise_cov(pixel_distances, cov_Lc, (nx_generate,ny_generate))      # generate noise 
+        #     # if verbose:
+                
                 
 
     #3: possibly interplate to bigger size
     if interpolate:
         if verbose:
             print('Interpolating to the larger size...', end = '')
-        ph_turb_output = np.zeros((n_atms, ny, nx))                                                                          # initiate output at the upscaled size (ie the same as the original lons_mg shape)
-        for atm_n, atm in enumerate(ph_turb):                                                                                # loop through the 1st dimension of the rank 3 atmospheres.  
+        ph_turbs_output = np.zeros((n_atms, ny, nx))                                                                          # initiate output at the upscaled size (ie the same as the original lons_mg shape)
+        for atm_n, atm in enumerate(ph_turbs):                                                                                # loop through the 1st dimension of the rank 3 atmospheres.  
             f = scipy_interpolate.interp2d(np.arange(0,nx_generate), np.arange(0,ny_generate), atm, kind='linear')           # and interpolate them to a larger size.  First we give it  meshgrids and values for each point
-            ph_turb_output[atm_n,:,:] = f(np.linspace(0, nx_generate, nx), np.linspace(0, ny_generate, ny))                  # then new meshgrids at the original (full) resolution.  
+            ph_turbs_output[atm_n,:,:] = f(np.linspace(0, nx_generate, nx), np.linspace(0, ny_generate, ny))                  # then new meshgrids at the original (full) resolution.  
         if verbose:
             print('Done!')
     else:
-        ph_turb_output = ph_turb                                                                                              # if we're not interpolating, no change needed
+        ph_turbs_output = ph_turbs                                                                                              # if we're not interpolating, no change needed
        
     # 4: rescale to correct range (i.e. a couple of cm)
-    ph_turb_m = np.zeros(ph_turb_output.shape)
-    for atm_n, atm in enumerate(ph_turb_output):
-        ph_turb_m[atm_n,] = rescale_atmosphere(atm, mean_m)
+    ph_turbs_m = np.zeros(ph_turbs_output.shape)
+    for atm_n, atm in enumerate(ph_turbs_output):
+        ph_turbs_m[atm_n,] = rescale_atmosphere(atm, mean_m)
                 
     # 5: return back to the shape given, which can be a rectangle:
-    ph_turb_m = ph_turb_m[:,:lons_mg.shape[0],:lons_mg.shape[1]]
+    ph_turbs_m = ph_turbs_m[:,:lons_mg.shape[0],:lons_mg.shape[1]]
     
     if water_mask is not None:
-        water_mask_r3 = ma.repeat(water_mask[np.newaxis,], ph_turb_m.shape[0], axis = 0)
-        ph_turb_m = ma.array(ph_turb_m, mask = water_mask_r3)
+        water_mask_r3 = ma.repeat(water_mask[np.newaxis,], ph_turbs_m.shape[0], axis = 0)
+        ph_turbs_m = ma.array(ph_turbs_m, mask = water_mask_r3)
     
-    return ph_turb_m
+    return ph_turbs_m
 
 #%%
 
