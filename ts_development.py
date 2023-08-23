@@ -5,6 +5,8 @@ Created on Thu Aug  1 10:14:02 2019
 
 @author: mgaddes
 """
+#%%
+
 
 import numpy as np
 import numpy.ma as ma
@@ -12,14 +14,22 @@ import sys
 import time
 from pathlib import Path
 import matplotlib.pyplot as plt
+# plt.ion()
+# try:
+#     %matplotlib qt
+# except:
+#     print(f"Tried ipython magic (%matplotlib qt) to make figures open in windows, but this failed for an unknown reason.  Continuing anyway.  ")
+
+
 import pickle
+import pdb
 
 
 import syinterferopy
 from syinterferopy.syinterferopy import atmosphere_topo, atmosphere_turb, deformation_wrapper, coherence_mask
 from syinterferopy.aux import col_to_ma, griddata_plot, plot_ifgs                        
 
-
+#%% debugging functions
 
 def matrix_show(matrix, title=None, ax=None, fig=None, save_path = None, vmin0 = False):
     """Visualise a matrix
@@ -99,6 +109,116 @@ def quick_linegraph(tcs, title='', zero=False, ax=None, xvals=None):
     ax.set_title(title)
     plt.pause(1)                                                                    # workaround to show when using ipdb
 
+
+
+#%%
+
+
+
+def generate_random_temporal_baselines(d_start = "20141231", d_stop = "20230801"):
+    """ Given a date range, generate LiCSAR style short temporal baseline ifgs.  Takes into account that S1b was operational and 
+    there were more 6 day ifg then.  
+    Inputs:
+        d_start | str | YYYYMMDD of when to start time series
+        d_stop | str | YYYYMMDD of when to stop time series
+    Returns:
+        acq_dates | list of datetimes | acq dates.  
+        tbaselines | list of ints | timeporal baselines of short temporal baseline ifgs.  First one is 0.  
+    History:
+        2023_08_17 | MEG | Written
+    """
+    usual_tbaselines = [6, 12, 12, 12, 12, 12, 12, 12, 12, 12,                  # temp baseline is chosen from this list at random
+                         24, 24, 24, 24, 24, 24, 36, 48, 60, 72]                # If number features more, will be chosen more
+
+    from datetime import datetime, timedelta
+
+    # hard coded.  Not exact (i.e. some frames start and stop at different times.)
+    s1b_dstart = datetime.strptime("20160901", '%Y%m%d')                       # launch 20160425, ramp up to fully operational over next few months.  
+    s1b_dstop = datetime.strptime("20161223", '%Y%m%d')                        # power failure ended mission
+
+    dstart = datetime.strptime(d_start, '%Y%m%d')                              # 
+    dstop = datetime.strptime(d_stop, '%Y%m%d')                                # 
+
+    
+    acq_dates = [dstart]
+    tbaselines = [0]
+    dcurrent = acq_dates[-1]
+
+    while dcurrent < dstop:
+        if (s1b_dstart < dcurrent) and (dcurrent < s1b_dstop ):                  # check if the next date is during the S1b years.  
+            tbaseline =  int(np.random.choice(usual_tbaselines[0:]))             # 6 day ifg possible
+        else:
+            tbaseline = days = int(np.random.choice(usual_tbaselines[1:]))       # 6 day ifg not possible 
+    
+        dnext = dcurrent + timedelta(days = tbaseline)                           # add the temp baseline to find the new date   
+        if dnext < dstop:                                                        # check we haven't gone past the end date 
+            acq_dates.append(dnext)                                              # if we haven't, record            
+            tbaselines.append(tbaseline)
+            dcurrent = acq_dates[-1]                                             # record the current date
+        else:
+            break                                                                # remember to exit the while if we have got to the last date
+
+    return acq_dates, tbaselines
+
+
+def tc_uniform_inflation(def_rate = 0.07, d_start = "20141231", d_stop = "20230801"):
+    """ Calculate the magnitdue of an inflating signal at each day.  Inflation is linear.  
+    Inputs:
+        def_rate | float | deformation rate, my/yr
+        d_start | str | YYYYMMDD of when to start time series.  Inclusive.  
+        d_stop | str | YYYYMMDD of when to stop time series.  Not inclusive.  
+    Returns:
+        tc_def | list of floats | cumulative deformation on each day.  Note that last day is not included.  
+        def_dates | list of dates | dateteime for each day there is deformation for.  Note that last day is not includes
+    History:
+        2023_08_17 | MEG | Written
+    """
+    from datetime import datetime, timedelta
+
+
+    # make cumulative deformaitn for each day
+    dstart = datetime.strptime(d_start, '%Y%m%d')                              # conver to dateteime
+    dstop = datetime.strptime(d_stop, '%Y%m%d')                                # convert to datetime
+    n_days = (dstop - dstart).days                                             # find number of days between dates
+    max_def = def_rate * (n_days / 365)                                         # calculate the maximum deformation
+    tc_def = np.linspace(0, max_def, n_days)                                    # divide it up to calucaulte it at each day
+    
+    # make datetime for each day.  
+    def_dates = [dstart]
+    dcurrent = def_dates[-1]
+
+    while dcurrent < dstop:
+        dnext = dcurrent + timedelta(days = 1)                                  # advance by one day
+        def_dates.append(dnext)
+        dcurrent = def_dates[-1]                                                # record the current date
+    
+    def_dates = def_dates[:-1]                                                  # drop last date
+    return tc_def, def_dates
+
+
+def sample_deformation_on_acq_dates(acq_dates, tc_def, def_dates):
+    """ Given deformation on each day (tc_def and def_dates), find the deformation
+    on the acquisition days (acq_dates).  
+    
+    Inputs:
+        acq_dates | list of datetimes | acq dates.  
+        tc_def | list of floats | cumulative deformation on each day.  Note that last day is not included.  
+        def_dates | list of dates | dateteime for each day there is deformation for.  Note that last day is not includes
+    Returns:
+        tc_def_resampled | r2 numpy array | cumulative deformation on each acquisition day.  
+    History:
+        2023_08_23 | MEG | Written
+    """
+    
+    n_acq = len(acq_dates)                                                  # 
+    tc_def_resampled = np.zeros((n_acq, 1))                                 # initialise as empty (zeros)
+    
+    for acq_n, acq_date in enumerate(acq_dates):                        
+        day_arg = def_dates.index(acq_date)                                 # find which day number the acquiisiont day is
+        day_def = tc_def[day_arg]                                           # get the deformaiton for that day
+        tc_def_resampled[acq_n, 0] = day_def                                # record
+    
+    return tc_def_resampled
 
 
 
@@ -181,34 +301,47 @@ matrix_show(signals_m["deformation"])
 
 S = np.vstack((ma.compressed(signals_m["deformation"]), ma.compressed(signals_m["topo_correlated_APS"])))         # signals will be stored as row vectors 
 
+
+print(f"Generating the turbulent APSs for the time series...", end = '')
 ph_turb_m  = atmosphere_turb(n_interferograms, lons_mg, lats_mg, water_mask=water_mask, mean_m = 0.02)
 N = np.zeros((n_interferograms, S.shape[1]))
 for row_n, ph_turb in enumerate(ph_turb_m):                                         # conver the noise (turbulent atmosphere) into a matrix of row vectors.  
     N[row_n,] = ma.compressed(ph_turb)
-
-A = np.random.randn(n_interferograms,2)                                             # these column vectors control the strength of each source through time
-
-quick_linegraph(A.T)
-
-X = A@S + N                                                                         # do the mixing: X = AS + N
-
-X = A[:,0:1] @ S[0:1,:]                                                                         # do the mixing: X = AS + N
-
-
-for ifg_n, ifg in enumerate(X):
-    matrix_show(col_to_ma(water_mask, ifg), title = f"ifg {ifg_n}")
-
-col_to_ma(water_mask, X[0,:])
-
-plot_ifgs(X, water_mask, title = 'Synthetic Interferograms')    
-    
-A[:,0] *= 3                                                                         # increase the strength of the first column, which controls the deformation
-X = A@S + N                                                                         # do the mixing: X = AS + N
-plot_ifgs(X, water_mask, title = 'Synthetic Interferograms: increased deformation strength')
+print('Done!')
 
 
 #%%
+# # v1:
+# A = np.random.randn(n_interferograms,2)                                             # these column vectors control the strength of each source through time
+# quick_linegraph(A.T)
+# X = A@S + N                                                                         # do the mixing: X = AS + N
+# X = A[:,0:1] @ S[0:1,:]                                                             # do the mixing: X = AS + N, but only for deformation.  
 
+# v2: use a function
+
+
+
+acq_dates, t_baselines = generate_random_temporal_baselines(d_start = "20141231", d_stop = "20230801")
+tc_def, def_dates = tc_uniform_inflation(def_rate = 2., d_start = "20141231", d_stop = "20230801")
+tc_def_resampled = sample_deformation_on_acq_dates(acq_dates, tc_def, def_dates)
+
+
+quick_linegraph([tc_def_resampled])
+f, ax = plt.subplots(1,1)
+ax.plot(np.cumsum(t_baselines), tc_def_resampled)
+
+#%%
+
+
+
+# fig, axes = plt.subplots(4,5)
+# for ifg_n, ifg in enumerate(X):
+#     np.ravel(axes)[ifg_n].matshow(col_to_ma(ifg, water_mask), vmin = np.min(X), vmax = np.max(X))
+
+
+
+
+# plot_ifgs(X, water_mask, title = 'Synthetic Interferograms')    
 
 
 

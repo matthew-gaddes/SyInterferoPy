@@ -146,7 +146,7 @@ def griddata_plot(griddata, lons_mg, lats_mg, title, dem_mode = True):
     
     
     fig1, ax = plt.subplots()                                                       # make a figure to show it
-    fig1.canvas.set_window_title(title)
+    fig1.canvas.manager.set_window_title(title)
     ax.set_title(title)
     if dem_mode:
         matrixPlt = ax.imshow(griddata, vmin = 0, vmax = np.max(griddata), cmap = cmap)             # best to set lower limit to 0 as voids are filled with -32768 so mess the colours up

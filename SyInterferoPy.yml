@@ -1,0 +1,19 @@
+name: SyInterferoPy
+channels:
+  - defaults
+  - conda-forge
+
+dependencies:
+  - python=3.11                            # general
+  - ipython=8.12
+  - ipykernel=6.25 
+  - matplotlib=3.7
+  - numpy
+  - scipy
+  - geopy                                 # 
+  - shapely                               # for srtm-dem-tools
+  - pyshp                                 # for srtm-dem-tools
+  - netcdf4                               # for srtm-dem-tools
+  - pip                                   # for srtm-dem-tools (opening GSHHS coastlines)
+  - pip:
+    - wget                                # for srtm-dem-tools (downloading SRTM tiles)
