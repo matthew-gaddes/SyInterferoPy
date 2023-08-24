@@ -195,47 +195,6 @@ def tc_uniform_inflation(def_rate = 0.07, d_start = "20141231", d_stop = "202308
     def_dates = def_dates[:-1]                                                  # drop last date
     return tc_def, def_dates
 
-def tc_logarithm_inflation(d_start = "20141231", d_stop = "20230801"):
-    """ Calculate the magnitdue of an inflating signal at each day.  Inflation is logarithmic.  
-    Inputs:
-        def_rate | float | deformation rate, my/yr
-        d_start | str | YYYYMMDD of when to start time series.  Inclusive.  
-        d_stop | str | YYYYMMDD of when to stop time series.  Not inclusive.  
-    Returns:
-        tc_def | list of floats | cumulative deformation on each day.  Note that last day is not included.  
-        def_dates | list of dates | dateteime for each day there is deformation for.  Note that last day is not included
-    History:
-        2023_08_17 | MEG | Written
-        2023_08_24 | CNL | Written
-    """
-    from datetime import datetime, timedelta
-
-    # make cumulative deformaitn for each day
-    dstart = datetime.strptime(d_start, '%Y%m%d')                              # conver to datetime
-    dstop = datetime.strptime(d_stop, '%Y%m%d')                                # convert to datetime
-    n_days = (dstop - dstart).days                                             # find number of days between dates
-    #max_def = def_rate * (n_days / 365)                                         # calculate the maximum deformation
-    #tc_def = np.linspace(0, max_def, n_days)                                    # divide it up to calculate it at each day
-    
-    t1=np.random.choice(n_days) # Inflexion time t1
-    coef_log1 = np.random.choice(np.linspace(0,1)) # rate of linear deformation (Pre-transitional time)
-    coef_log2 = np.random.choice(np.linspace(0,100)) # 'b' coeficient from logarithmic function: u(t)=b*coef(t)+c (Post-transitional time)
-    tt=np.arange(0,n_days)
-    tc_def = coef_log1*tt[np.where(tt<=t1)[0]] # Linear deformation during pre-transitional time
-    coef=np.amax(tc_def)-coef_log2*np.log(t1)
-    tc_def = np.append(tc_def,coef_log2*np.log(tt[np.where(tt>t1)[0]])+coef) # Logarithmic deformation during post-transitional time
-     
-    # make datetime for each day.  
-    def_dates = [dstart]
-    dcurrent = def_dates[-1]
-
-    while dcurrent < dstop:
-        dnext = dcurrent + timedelta(days = 1)                                  # advance by one day
-        def_dates.append(dnext)
-        dcurrent = def_dates[-1]                                                # record the current date
-    
-    def_dates = def_dates[:-1]                                                  # drop last date
-    return tc_def, def_dates
 
 def sample_deformation_on_acq_dates(acq_dates, tc_def, def_dates):
     """ Given deformation on each day (tc_def and def_dates), find the deformation
@@ -363,8 +322,7 @@ print('Done!')
 
 
 acq_dates, t_baselines = generate_random_temporal_baselines(d_start = "20141231", d_stop = "20230801")
-#tc_def, def_dates = tc_uniform_inflation(def_rate = 2., d_start = "20141231", d_stop = "20230801")
-tc_def, def_dates = tc_logarithm_inflation(d_start = "20141231", d_stop = "20230801")
+tc_def, def_dates = tc_uniform_inflation(def_rate = 2., d_start = "20141231", d_stop = "20230801")
 tc_def_resampled = sample_deformation_on_acq_dates(acq_dates, tc_def, def_dates)
 
 
