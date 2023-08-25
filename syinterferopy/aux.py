@@ -6,6 +6,26 @@ Created on Thu Feb 13 18:14:05 2020
 @author: matthew
 """
 
+import pdb
+
+#%%
+
+def rescale_defo(defos, magnitude = 1.):
+    """ Given deformation patterns in metres, rescale so that the maximum value is "magnitude".
+    Inputs:
+        defos | r3 ma | n_times x ny x nx, water masked.  
+        magnitude | float | new maximum signals
+    Retrurns:
+        defos | r3 ma | As above, with new magnitude. 
+    History:
+        2023_08_25 | MEG | Written. 
+    """
+    import numpy.ma as ma
+    defo_maxs = ma.max(defos, axis = (1,2))         
+    for defo_n, defo in enumerate(defos):
+        defo /= defo_maxs[defo_n]
+    return defos
+
 #%%
 
 def lon_lat_to_ijk(lons_mg, lats_mg):

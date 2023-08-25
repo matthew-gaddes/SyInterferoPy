@@ -6,6 +6,97 @@ Created on Fri Sep 18 12:16:02 2020
 @author: matthew
 """
 
+import pdb
+
+#%%
+
+
+def create_random_ts_1_volc(outdir, dem_dict, n_pix = 224, d_start = "20141231", d_stop = "20230801",
+                            n_def_location = 10, n_tcs = 10, n_atms = 10,
+                            topo_delay_var = 0.00005, turb_aps_mean = 0.02):
+    """Create random time series of Sentinel-1 data for a given volcano.  
+    n_def_location random crops of the DEM with the deformation placed somewhere randomly are made (the majority of the deformation must be on land.  )
+    n_tcs patterns for the temporal evolution of the deformation are made.  
+    n_atms instances of atmospheric noise are made (turbulent and topographically correlated)
+    Total number of time series = n_def_location * n_tcs * n_atms.  
+    
+    Inputs:
+        dem_dict | dict | DEM and vairous parameters.  
+        n_pix | int | size out interferograms outp.
+        d_start | string | YYYYMMDD of time series start
+        d_stop | string | YYYYMMDD of time series end
+        
+        n_def_locations | int | Number of random DEM crops with random deformation placement.  
+        n_tcs | int | Number of random deformation time courses.  
+        n_atms | int | Number of random time series atmospheres.  
+        
+        topo_delay_var | float | variance of the delays.  Higher value gives more variety in atmospheres, so bigger interfergoram atmospheres.  
+        turb_aps_mean | float | mean strength of turbulent atmospheres, in metres.  Note the the atmosphere_turb funtion takes cmm, and the value provided in m is converted first
+        
+    Returns:
+        Saves pickle file of the time series, the deformaiton time course, and hte DEM.  
+        
+    History:
+        2023_08_24 | MEG | Written.  
+    
+    """
+    import numpy.ma as ma
+    import pickle
+    
+    from syinterferopy.random_generation import generate_dems_and_defos
+    from syinterferopy.atmosphere import atmosphere_turb, atmosphere_topos
+    from syinterferopy.temporal import defo_to_ts, generate_random_temporal_baselines, sample_deformation_on_acq_dates
+    from syinterferopy.temporal import generate_uniform_temporal_baselines, generate_random_tcs
+    from syinterferopy.aux import rescale_defo
+   
+    out_file_n = 0
+    
+    defos_m, dems = generate_dems_and_defos(dem_dict, n_pix, min_deformation = 0.05, max_deformation = 0.25, n_def_location = n_def_location)             # generate multiple crops of DEM with deformation places randomly on it.  
+    defos = rescale_defo(defos_m, magnitude = 1)                                                                                                            # rescale deformation so maximum is awlays 1
+    tcs, def_dates = generate_random_tcs(n_tcs, d_start, d_stop, min_def_rate = 1., max_def_rate = 2.)                                                                                        # generate random time courses for the deformation. 
+    volc_outdir_name =  dem_dict['name'].replace(' ', '_')
+    (outdir / volc_outdir_name).mkdir(parents = True, exist_ok = True)
+    
+    for defo_n, defo in enumerate(defos):
+        for tc_n, tc in enumerate(tcs):
+            #acq_dates, tbaselines = generate_random_temporal_baselines(d_start, d_stop)
+            acq_dates, tbaselines = generate_uniform_temporal_baselines(d_start, d_stop)
+            tc_resampled = sample_deformation_on_acq_dates(acq_dates, tc, def_dates)                                                # get the deformation on only the days when there's a satellite acquisitions.  Note that this is 0 on the first date.  
+            defo_ts = defo_to_ts(defo, tc_resampled)                                                                                                        # time series of just the deformation.  ((n-acq) - 1 x ny x nx)
+            
+            for atm_n in range(n_atms):
+                atm_turbs = atmosphere_turb(len(acq_dates)-1, dem_dict['lons_mg'][:n_pix,:n_pix], dem_dict['lats_mg'][:n_pix,:n_pix], mean_m = turb_aps_mean)           # generate some random atmospheres, turbulent.
+                atm_topos = atmosphere_topos(len(acq_dates)-1, dems[defo_n,], delay_grad = -0.0003, delay_var = topo_delay_var)                                                              # generate some random atmospheres, topographically correlated
+                ts = defo_ts + atm_turbs + atm_topos
+                if atm_n == 0:
+                    tss = ma.zeros((n_atms,  ts.shape[0], ts.shape[1], ts.shape[2]))                                                                # initiliase
+                tss[atm_n,] = ts
+                print(f"Deformation location: {defo_n} Time course: {tc_n} Atmosphere {atm_n}")
+                
+                # possible debug figure.  
+                # n_cols = 10
+                # f, axes = plt.subplots(4,n_cols)
+                # all_signals = np.concatenate((defo_ts[np.newaxis], atm_turbs[np.newaxis], atm_topos[np.newaxis], ts[np.newaxis]), axis = 0)
+                # signal_max = ma.max(all_signals)
+                # signal_min = ma.min(all_signals)
+               
+                # for col_n in range(n_cols):
+                #     axes[0, col_n].matshow(defo_ts[col_n,:,:], vmin = signal_min, vmax = signal_max)
+                #     axes[1, col_n].matshow(atm_turbs[col_n,:,:], vmin = signal_min, vmax = signal_max)
+                #     axes[2, col_n].matshow(atm_topos[col_n,:,:], vmin = signal_min, vmax = signal_max)
+                #     axes[3, col_n].matshow(ts[col_n,:,:], vmin = signal_min, vmax = signal_max)
+                # for ax in np.ravel(axes):
+                #     ax.set_xticks([])
+                #     ax.set_yticks([])
+                
+            with open(outdir / volc_outdir_name / f'defo_{defo_n:06d}_tc_{tc_n:06d}.pkl', 'wb') as f:
+                pickle.dump(tss, f)
+                pickle.dump(tc, f)
+                pickle.dump(dems[defo_n], f)
+            out_file_n += 1
+                    
+    
+
 
 #%%
 

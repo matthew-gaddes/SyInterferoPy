@@ -11,13 +11,16 @@ Created on Thu Aug 24 11:34:39 2023
 
 #%%
 
-def generate_random_tcs(n_tcs = 100, d_start = "20141231", d_stop = "20230801"):
+def generate_random_tcs(n_tcs = 100, d_start = "20141231", d_stop = "20230801",
+                        min_def_rate = 1., max_def_rate = 2. ):
     """ Generate n_tcs random time courses (ie temporal behavious of deformation.  )
     
     Inputs:
         n_tcs | int | Number of time series to generate.  
         d_start | string | start date, form YYYYMMDD
         d_end | string | start date, form YYYYMMDD
+        min_def_rate | float | m/yr minimum deformation rate.  
+        max_def_rate | float | m/yr maximum deformation rate.  
     Returns:
         tcs | rank 2 array | time courses as row vectors.  n_tcs rows.  
         def_dates | list of datetimes | all the dates that we have deformation for.  
@@ -28,7 +31,7 @@ def generate_random_tcs(n_tcs = 100, d_start = "20141231", d_stop = "20230801"):
     from syinterferopy.temporal import tc_uniform_inflation
     
     for ts_n in range(n_tcs):
-        def_rate = np.random.uniform(0.05, 1.)                                       # random deformation rate.  
+        def_rate = np.random.uniform(min_def_rate, max_def_rate)                                       # random deformation rate.  
         tc_def, def_dates = tc_uniform_inflation(def_rate, d_start, d_stop)         # generate time course
         if ts_n == 0:                                                               # if the first time.
             tcs = np.zeros((n_tcs, tc_def.shape[0]))                                # initialise array to store results
