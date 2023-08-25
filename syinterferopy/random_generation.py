@@ -9,6 +9,66 @@ Created on Fri Sep 18 12:16:02 2020
 
 #%%
 
+
+
+def generate_dems_and_defos(dem_dict, n_pix = 224, min_deformation = 0.05, max_deformation = 0.25, n_def_location = 10):
+    """ Given a large dem, take a random crop of it of size n_pix and randomly place a deformaiotn patter that is mostly visilbe (i.e. not in water)
+    repeate n_def_location times.  
+    
+    Inputs: 
+        dem_dict | dict | dict_keys(['name', 'centre', 'side_length', 'dem', 'lons_mg', 'lats_mg'])
+        n_pix | int | size length of square images output.  
+        min_deformation | float | deformation must be at least this big.  
+        max_deformation | float | deformation must be less than this.  
+        
+    Returns:
+        defos | r3 ma | masked array of deformaitons.  
+        dems | r3 ma | masked array of dems
+        
+    History:
+        2023_08_24 | MEG | Written.  
+    """
+    import numpy as np
+    import numpy.ma as ma
+    
+    from syinterferopy.syinterferopy import coherence_mask
+    
+
+    defo_source = 'mogi'
+    generate_limit = 20                                                                     # exit if we get stuck in while unable to make deformaiton viable.  
+    n_generate = 0                                                                            # count how many ifgs succesful made so we can stop when we get to n_ifgs
+    attempt_generate = 0                                                                              # only succesfully generated ifgs are counted above, but also useful to count all
+    defos = ma.zeros((n_def_location, n_pix, n_pix))                                                                                        # the data will be stored in a dictionary
+    dems =  ma.zeros((n_def_location, n_pix, n_pix))                                                                                        # the data will be stored in a dictionary
+    
+    
+    while (n_generate < n_def_location) and (n_generate < generate_limit):
+               
+        dem_large = dem_dict['dem']                                                                                             # open a dem
+        dem_ll_extent = [(dem_dict['lons_mg'][0,0],   dem_dict['lats_mg'][0,0] ),                                   # get lon lat of lower left corner
+                         (dem_dict['lons_mg'][-1,-1], dem_dict['lats_mg'][-1,-1])]                                  # and upper right corner
+
+        defo_m, source_kwargs = create_random_defo_m(dem_large, dem_dict['lons_mg'], dem_dict['lats_mg'],
+                                                     dem_dict['centre'], defo_source,                                                        #  make a deformation signal with a size within the bounds set by min and max.  
+                                                     min_deformation, max_deformation)                                                      # Note that is is made at the size of the large DEM (dem_large)
+        mask_coherence = coherence_mask(dem_dict['lons_mg'][:n_pix,:n_pix], dem_dict['lats_mg'][:n_pix,:n_pix])                              # generate coherence mask, but at the number of pixels required for the ouput, and not hte size of the large dem
+        defo_m, dem, viable_location, loc_list, masks = def_and_dem_translate(dem_large, defo_m, mask_coherence, threshold = 0.3,           # do the random crop of the dem and the defo pattern, so reducing the size to that desired.  
+                                                                              n_pixs=n_pix, defo_fraction = 0.8)                            # and check that the majority of the deformation pattern isn't in an incoheret area, or in water.          
+        defo_m_ma = ma.array(defo_m, mask = masks['coh_water'])                                                                         # mask water and incoherence.  
+        
+        if viable_location:
+            print(f"Succesfully randomly placed the deformation signal.  ")
+            defos[n_generate,:,:] = defo_m_ma
+            dems[n_generate,:,:] = dem
+            n_generate += 1
+            
+    return defos, dems
+
+
+
+
+#%%
+
 def create_random_synthetic_ifgs(volcanoes, defo_sources, n_ifgs, n_pix = 224, outputs = ['uuu'], intermediate_figure = False, 
                                  coh_threshold = 0.7, noise_method = 'fft', cov_coh_scale = 5000,  
                                  min_deformation = 0.05, max_deformation = 0.25, snr_threshold = 2.0,
