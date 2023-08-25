@@ -402,7 +402,7 @@ def plot_ifgs(ifgs, pixel_mask, title, n_rows = 3):
     n_cols = int(np.ceil(ifgs.shape[0]/float(n_rows)))
     f, axes = plt.subplots(n_rows, n_cols)
     f.suptitle(title, fontsize=14)
-    f.canvas.set_window_title(title)
+    f.canvas.manager.set_window_title(title)
 
     # 3: loop through plotting ifgs
     for ifg_n, axe in enumerate(np.ravel(axes)):
