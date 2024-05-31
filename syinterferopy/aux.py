@@ -27,7 +27,6 @@ def rescale_defo(defos, magnitude = 1.):
     return defos
 
 #%%
-
 def lon_lat_to_ijk(lons_mg, lats_mg):
     """ Given a meshgrid of the lons and lats of the lower left corner of each pixel, 
     find their distances (in metres) from the lower left corner.  
@@ -35,25 +34,49 @@ def lon_lat_to_ijk(lons_mg, lats_mg):
         lons_mg | rank 2 array | longitudes of the lower left of each pixel.  
         lats_mg | rank 2 array | latitudes of the lower left of each pixel.  
     Returns:
-        ijk | rank 2 array | 3x lots.  The distance of each pixel from the lower left corner of the image in metres.  
-        pixel_spacing | dict | size of each pixel (ie also the spacing between them) in 'x' and 'y' direction.  
+        ijk | rank 2 array | 3x lots.  The distance of each pixel from the lower 
+                            left corner of the image in metres.  
+        pixel_spacing | dict | size of each pixel (ie also the spacing between 
+                                                   them) in 'x' and 'y' direction.  
     History:
         2020/10/01 | MEG | Written 
+        2024_05_31 | MEG | Change to average pixel size in x and y, update fomatting
     """
     from geopy import distance
     import numpy as np
     
     ny, nx = lons_mg.shape
     pixel_spacing = {}
-    pixel_spacing['x'] = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), (lats_mg[-1,0], lons_mg[-1,1])).meters                  # this should vary with latitude.  Usually around 90 (metres) for SRTM3 resolution.  
-    pixel_spacing['y'] = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), (lats_mg[-2,0], lons_mg[-1,0])).meters                  # this should be constant at all latitudes.  
-   
-    X, Y = np.meshgrid(pixel_spacing['x'] * np.arange(0, nx), pixel_spacing['y'] * np.arange(0,ny))                       # make a meshgrid
-    Y = np.flipud(Y)                                                                                                      # change 0 y cordiante from matrix style (top left) to axes style (bottom left)
-    ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                                    # pairs of coordinates of everywhere we have data   
-    ijk = np.vstack((ij, np.zeros((1, ij.shape[1]))))                                                                     # xy and 0 depth, as 3xlots
+    # this should vary with latitude.  Usually around 90 (metres) for SRTM3 
+    
+    # calculate the average latitude posting (ie size of a pixel in degrees)
+    # from south west to south east corners
+    size_x = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), 
+                               (lats_mg[-1,-1], lons_mg[-1,-1])).meters                  
+    # -1 as lons_mg and lats_mg are lower left corner of pixel, so if 
+    # there were 3 pixels, there are only 2 steps across pixel corners.  
+    pixel_spacing['x'] = size_x / (nx)
+    
+    # this should be constant at all latitudes.  
+    # from south west to north west
+    size_y = distance.distance((lats_mg[-1,0], lons_mg[-1,0]), 
+                               (lats_mg[0,0], lons_mg[0,0])).meters                  
+    pixel_spacing['y'] = size_y / (ny)
+    
+    X, Y = np.meshgrid(pixel_spacing['x'] * np.arange(0, nx), 
+                       pixel_spacing['y'] * np.arange(0,ny))                       
+    
+    # change 0 y cordiante from matrix style (top left) to axes style (bottom left)
+    Y = np.flipud(Y)                                                                                                      
+    
+    # pairs of coordinates of everywhere we have data   
+    ij = np.vstack((np.ravel(X)[np.newaxis], np.ravel(Y)[np.newaxis]))                                                    
+    
+    # assume 0 depth
+    ijk = np.vstack((ij, np.zeros((1, ij.shape[1]))))                                                                     
     
     return ijk, pixel_spacing
+
 
 #%%
 
